@@ -94,8 +94,8 @@ class Database:
 
 
 class CRUD(Database):
-    def __init__(self, host, port, user, password, database):
-        super().__init__(host, port, user, password, database)
+    def __init__(self, host, port, user, password, database, slack_channel=None, slack_token=None):
+        super().__init__(host, port, user, password, database, slack_channel=slack_channel, slack_token=slack_token)
 
     # CRUD FUNCTIONS
     def create_table(self, table_name, columns):

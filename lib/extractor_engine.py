@@ -1,4 +1,4 @@
-from lib.database import Database
+from lib.database import CRUD
 from lib.slack import Slack
 
 from utils.file_utils import *
@@ -19,13 +19,13 @@ class ExtractorEngine:
 
         load_dotenv()
         self.os_copy = os.environ.copy()
-        self.slack = Slack(
+        self.SLACK = Slack(
             slack_channel=self.os_copy.get("SLACK_CHANNEL"),
             slack_token=self.os_copy.get("SLACK_TOKEN"),
             bot_name="Extractor Engine",
         )
 
-        self.db = Database(
+        self.DB = CRUD(
             host=self.os_copy.get("DB_HOST"),
             port=self.os_copy.get("DB_PORT"),
             user=self.os_copy.get("DB_USER"),
@@ -65,6 +65,75 @@ class ExtractorEngine:
             send_directory(self.UTILS_DIR, self.REMOTE_D4J_DIR, server)
             send_file(self.MAIN_SCRIPT, self.REMOTE_D4J_DIR, server)
 
+            send_file(self.CURR_ROOT_PATH + "/.env", self.REMOTE_D4J_DIR, server)
+
+        def prepare_database():
+            if not self.DB.table_exists("d4j_fault_info"):
+                columns = [
+                    "fault_idx SERIAL PRIMARY KEY",
+                    "project TEXT",
+                    "bug_id INT",
+                    "experiment_label TEXT",
+                    "UNIQUE (project, bug_id, experiment_label)" # --ENSURE UNIQUE COMBINATION
+                ]
+                col_str = ", ".join(columns)
+                self.DB.create_table("d4j_fault_info", col_str)
+            
+            if not self.DB.table_exists("d4j_tc_info"):
+                columns = [
+                    "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
+                    "tc_idx INT",
+                    "json_data TEXT",
+                    "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete tc_info rows when bug_info is deleted, Update changes in bug_info to tc_info
+                ]
+                col_str = ", ".join(columns)
+                self.DB.create_table("d4j_tc_info", col_str)
+
+                self.DB.create_index(
+                    "d4j_tc_info",
+                    "idx_d4j_tc_info_fault_idx",
+                    "fault_idx"
+                )
+            
+            if not self.DB.table_exists("d4j_line_info"):
+                columns = [
+                    "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
+                    "line_idx INT",
+                    "file TEXT",
+                    "line_info TEXT",
+                    "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete line_info rows when bug_info is deleted, Update changes in bug_info to line_info
+                ]
+                col_str = ", ".join(columns)
+                self.DB.create_table("d4j_line_info", col_str)
+                self.DB.create_index(
+                    "d4j_line_info",
+                    "idx_d4j_line_info_fault_idx",
+                    "fault_idx"
+                )
+            
+            if not self.DB.table_exists("d4j_mutation_info"):
+                columns = [
+                    "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
+                    "mutation_idx INT",
+                    "class TEXT",
+                    "method TEXT",
+                    "line INT",
+                    "mutator TEXT",
+                    "result_transition TEXT",
+                    "exception_type_transition TEXT",
+                    "exception_msg_transition TEXT",
+                    "stacktrace_transition TEXT",
+                    "num_tests_run INT",
+                    "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete mutation_info rows when bug_info is deleted, Update changes in bug_info to mutation_info
+                ]
+                col_str = ", ".join(columns)
+                self.DB.create_table("d4j_mutation_info", col_str)
+                self.DB.create_index(
+                    "d4j_mutation_info",
+                    "idx_d4j_mutation_info_fault_idx",
+                    "fault_idx"
+                )
+
         servers = self.SERVER_LIST
         for i in range(0, len(servers), batch_size):
             batch = servers[i:i+batch_size]
@@ -75,6 +144,9 @@ class ExtractorEngine:
                         future.result()
                     except Exception as e:
                         LOGGER.error(f"Error preparing server: {e}")
+        
+        prepare_database()
+        self.DB.__del__()
     
     def run_mutation_testing(self, batch_size=5):
         # 2. Run run_pit.sh <PID> <BID> <parallel>
