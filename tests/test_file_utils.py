@@ -50,6 +50,20 @@ def test_send_file():
     # Clean up the mock file
     os.remove(mock_src)
 
+def test_chmod_file():
+    load_dotenv()
+    server_home = os.environ.get("SERVER_HOME")
+    assert server_home is not None
+
+    mock_server = os.environ.get("TEST_SERVER")
+    mock_path = server_home + "test_directory/mock_file.txt"
+
+    test_send_file()  # Ensure the file exists before trying to change permissions
+
+    mode = "755"  # Example mode
+    res = chmod_file(mock_path, mode, mock_server)
+    assert res is True, f"Failed to change permissions of file {mock_path} on server {mock_server}"
+
 def test_receive_file():
     load_dotenv()
     server_home = os.environ.get("SERVER_HOME")

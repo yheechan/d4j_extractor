@@ -3,6 +3,7 @@ File utility functions for managing file/directory operations on remote servers.
     - make, delete directories
     - send, receive, delete file/directories
     - copy file/directories
+    - chmod of a file
 """
 
 import subprocess as sp
@@ -54,6 +55,22 @@ def send_file(src, dest, server):
         return True
     except Exception as e:
         LOGGER.error(f"Failed to send file {src} to {server}:{dest}: {e}")
+        return False
+
+def chmod_file(path, mode, server):
+    """
+    Change the permissions of a file on the remote server.
+    :param path: Path of the file to change permissions.
+    :param mode: Permission mode to set (e.g., '755' for +x).
+    :param server: Remote server object.
+    :return: True if permission change is successful, False otherwise.
+    """
+    try:
+        sp.check_call(["ssh", f"{server}", f"chmod {mode} {path}"])
+        LOGGER.info(f"Permissions of {path} changed to {mode} on server {server}.")
+        return True
+    except Exception as e:
+        LOGGER.error(f"Failed to change permissions of {path}: {e}")
         return False
 
 def receive_file(src, dest, server):
