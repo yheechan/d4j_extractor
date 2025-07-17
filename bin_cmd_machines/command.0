@@ -1,0 +1,6 @@
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /tmp/*"
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /ssd_home/yangheechan/FL-dataset-generation-opencv_imgproc_big/out/opencv_imgproc_big/generated_mutants-mbfl-trial1"
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /ssd_home/yangheechan/FL-dataset-generation-opencv_imgproc_big/log/opencv_imgproc_big/stage05-trial1"
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /ssd_home/yangheechan/FL-dataset-generation-opencv_imgproc_big/work/opencv_imgproc_big/working_env/faster*.swtv/core*-p*/"
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /ssd_home/yangheechan/FL-dataset-generation-opencv_imgproc_big/work/opencv_imgproc_big/working_env/faster*.swtv/core*/stage05-trial1-assigned_works"
+ python3 run_cmd.py -th mbfl_servers -c "sudo rm -rf /ssd_home/yangheechan/FL-dataset-generation-opencv_imgproc_big/work/opencv_imgproc_big/working_env/faster*.swtv/core*/opencv_imgproc_big"
