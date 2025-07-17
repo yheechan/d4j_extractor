@@ -3,7 +3,10 @@ import time
 from lib.slack import Slack
 
 class Database:
-    def __init__(self, host, port, user, password, database):
+    """
+    Database class to handle database connections and operations
+    """
+    def __init__(self, host, port, user, password, database, slack_channel=None, slack_token=None):
         self.host = host
         self.port = port
         self.user = user
@@ -12,8 +15,9 @@ class Database:
 
         self.connect()
         self.slack = Slack(
-            channel_name="C0837SKQLK0",
-            bot_name="DB-Connection-Bot"
+            slack_channel=slack_channel,
+            slack_token=slack_token,
+            bot_name="Database Bot"
         )
     
     def connect(self):

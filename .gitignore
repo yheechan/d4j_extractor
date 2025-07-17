@@ -13,3 +13,5 @@ statistics-v1/
 ignore/
 reference-papers/
 configs/config.json
+.env
+.pytest_cache/
