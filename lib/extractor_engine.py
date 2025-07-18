@@ -49,8 +49,10 @@ class ExtractorEngine:
         self.REMOTE_WORK_DIR = f"{self.REMOTE_D4J_DIR}{self.PID}"
 
     def run(self):
+        self.SLACK.send_message(f"Starting extractor for project {self.PID} with {len(self.BID_LIST)} bugs.")
         self.prepare_for_testing()
         self.run_mutation_testing()
+        self.SLACK.send_message(f"Extractor for project {self.PID} completed.")
 
     def prepare_for_testing(self, batch_size=5):
         # 1. Initialize file system in remote servers in parallel batches
@@ -173,7 +175,7 @@ class ExtractorEngine:
                 save_results(server, self.PID, bug_id, self.EL)
 
         servers = self.SERVER_LIST
-        bid_list = self.BIG_LIST
+        bid_list = self.BID_LIST
         n_servers = len(servers)
         # Distribute BIDs as evenly as possible
         bid_chunks = [[] for _ in range(n_servers)]
