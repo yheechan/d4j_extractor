@@ -13,9 +13,10 @@ from dotenv import load_dotenv
 LOGGER = logging.getLogger(__name__)
 
 class ExtractorEngine:
-    def __init__(self, subject, parallel=10):
-        self.PID = subject
+    def __init__(self, pid, parallel=10, experiment_label=None):
+        self.PID = pid
         self.parallel = parallel
+        self.EL = experiment_label
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -43,11 +44,9 @@ class ExtractorEngine:
 
         self.SERVER_LIST = get_servers_list(self.os_copy.get("SERVER_LIST_FILE"))
         self.BID_LIST = get_active_bugs_list(self.PID, self.os_copy.get("D4J_HOME"))
-        self.BIG_LIST = self.BID_LIST[:3]
 
         self.REMOTE_D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
-        self.REMOTE_WORK_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/{self.PID}"
-        self.REMOTE_OUT_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/{self.PID}/out_dir"
+        self.REMOTE_WORK_DIR = f"{self.REMOTE_D4J_DIR}{self.PID}"
 
     def run(self):
         self.prepare_for_testing()
@@ -82,8 +81,18 @@ class ExtractorEngine:
             if not self.DB.table_exists("d4j_tc_info"):
                 columns = [
                     "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
+
                     "tc_idx INT",
-                    "json_data TEXT",
+                    "test_name TEXT",
+                    "result INT",
+                    "execution_time_ms DOUBLE PRECISION",
+
+                    "bit_sequence_length INT",
+                    "line_coverage_bit_sequence TEXT",
+                    
+                    "exception_type TEXT",
+                    "exception_msg TEXT",
+                    "stacktrace TEXT",
                     "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete tc_info rows when bug_info is deleted, Update changes in bug_info to tc_info
                 ]
                 col_str = ", ".join(columns)
@@ -100,7 +109,9 @@ class ExtractorEngine:
                     "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
                     "line_idx INT",
                     "file TEXT",
-                    "line_info TEXT",
+                    "class TEXT",
+                    "method TEXT",
+                    "line_num INT",
                     "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete line_info rows when bug_info is deleted, Update changes in bug_info to line_info
                 ]
                 col_str = ", ".join(columns)
@@ -146,16 +157,20 @@ class ExtractorEngine:
                         LOGGER.error(f"Error preparing server: {e}")
         
         prepare_database()
-        self.DB.__del__()
     
     def run_mutation_testing(self, batch_size=5):
+        def save_results(server, pid, bid, el):
+            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-report/saver-exec.log 2>&1"
+            execute_command(command, server)
+
         # 2. Run run_pit.sh <PID> <BID> <parallel>
         # Distribute BIDs among servers, each server only takes its assigned BIDs sequentially
         def run_pit_on_bugs(server, bug_ids):
             for bug_id in bug_ids:
                 LOGGER.info(f"Running PIT on {bug_id} on server {server}")
-                command = f"source ~/.bashrc; cd {self.REMOTE_D4J_DIR} && bash run_pit.sh {self.PID} {bug_id} {self.parallel}"
+                command = f"cd {self.REMOTE_D4J_DIR} && bash run_pit.sh {self.PID} {bug_id} {self.parallel}"
                 execute_command(command, server)
+                save_results(server, self.PID, bug_id, self.EL)
 
         servers = self.SERVER_LIST
         bid_list = self.BIG_LIST
@@ -164,6 +179,7 @@ class ExtractorEngine:
         bid_chunks = [[] for _ in range(n_servers)]
         for idx, bid in enumerate(bid_list):
             bid_chunks[idx % n_servers].append(bid)
+            LOGGER.debug(f"Assigned BID {bid} to server {servers[idx % n_servers]}")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=n_servers) as executor:
             futures = [executor.submit(run_pit_on_bugs, server, server_bids) for server, server_bids in zip(servers, bid_chunks)]

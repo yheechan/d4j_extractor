@@ -42,7 +42,7 @@ src_dir=$(defects4j export -p dir.src.classes)
 # redirect the stderr and stdout to a log file
 report_dir="$out_dir/$PID-${BID}b-report"
 mkdir -p "$report_dir"
-log_file="$report_dir/log.txt"
+log_file="$report_dir/pit-exec.log"
 
 java -cp "$enhanced_cp:$PITEST_JAR" \
   $PIT_REPORTER_CLASS \

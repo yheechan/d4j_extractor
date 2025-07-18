@@ -15,3 +15,14 @@ reference-papers/
 configs/config.json
 .env
 .pytest_cache/
+*temp*
+*tmp*
+*.log
+*.csv
+*.json
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.pickle
+*.pkl.*
