@@ -142,22 +142,22 @@ class SaverEngine:
         
         # Save mutation information to the database
         with open(full_MUTATION_MATRIX_CSV, 'r') as csvfile:
-            reader = csv.DictReader(csvfile)
+            reader = csv.reader(csvfile)
             # skip the header
             next(reader, None)
             for row in reader:
                 # Assuming the CSV has columns: mutant_id,class,method,line,mutator,result_transition,exception_type_transition,exception_msg_transition,stacktrace_transition,status,num_tests_run
-                mutation_idx = row['mutant_id']
-                class_name = row['class']
-                method = row['method']
-                line = row['line']
-                mutator = row['mutator']
-                result_transition = row['result_transition']
-                exception_type_transition = row['exception_type_transition']
-                exception_msg_transition = row['exception_msg_transition']
-                stacktrace_transition = row['stacktrace_transition']
-                status = row['status']
-                num_tests_run = row['num_tests_run']
+                mutation_idx = row[0]
+                class_name = row[1]
+                method = row[2]
+                line = row[3]
+                mutator = row[4]
+                result_transition = row[5]
+                exception_type_transition = row[6]
+                exception_msg_transition = row[7]
+                stacktrace_transition = row[8]
+                status = row[9]
+                num_tests_run = row[10]
 
                 values = [
                     self.fault_idx, mutation_idx, class_name, method, line,
