@@ -136,6 +136,7 @@ class ExtractorEngine:
                     "exception_type_transition TEXT",
                     "exception_msg_transition TEXT",
                     "stacktrace_transition TEXT",
+                    "status TEXT",
                     "num_tests_run INT",
                     "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete mutation_info rows when bug_info is deleted, Update changes in bug_info to mutation_info
                 ]
