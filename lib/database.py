@@ -1,6 +1,9 @@
 import psycopg2
 import time
 from lib.slack import Slack
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 class Database:
     """
@@ -34,7 +37,7 @@ class Database:
         try:
             self.db.close()
         except Exception as e:
-            pass
+            LOGGER.error(f"Error closing database connection: {e}")
         self.connect()
 
     def __del__(self):
@@ -42,8 +45,8 @@ class Database:
             self.cursor.close()
             self.db.close()
         except Exception as e:
-            pass
-    
+            LOGGER.error(f"Error closing database connection: {e}")
+
     def execute(self, query, args={}, retries=5, delay=10.0):
         attempt = 0
         while attempt < retries:
@@ -52,12 +55,12 @@ class Database:
                 return self.cursor.fetchall()
             except psycopg2.OperationalError as e:
                 attempt += 1
-                print(f"[execute] OperationalError: {e} -- retrying {attempt}/{retries}.")
+                LOGGER.error(f"DB connection error: {e} -- retrying {attempt}/{retries} in {delay} secs.")
                 self.slack.send_message(f"DB connection error: {e} -- retrying {attempt}/{retries} in {delay} secs.")
                 self.reconnect()
                 time.sleep(delay)
             except Exception as e:
-                print(f"[execute] Unexpected error: {e}")
+                LOGGER.error(f"Unexpected error: {e}")
                 raise
         raise psycopg2.OperationalError(
             f"execute failed after {retries} retries: {query} with args {args}"
@@ -68,16 +71,15 @@ class Database:
         while attempt < retries:
             try:
                 self.cursor.execute(query, args)
-                return # success
+                return  # success
             except psycopg2.OperationalError as e:
                 attempt += 1
-                print(f"[safe_execute] OperationalError: {e} -- retrying {attempt}/{retries}.")
+                LOGGER.error(f"OperationalError: {e} -- retrying {attempt}/{retries}.")
                 self.slack.send_message(f"DB connection error: {e} -- retrying {attempt}/{retries} in {delay} secs.")
                 self.reconnect()
                 time.sleep(delay)
             except Exception as e:
-                
-                print(f"[safe_execute] Unexpected error: {e}")
+                LOGGER.error(f"Unexpected error: {e}")
                 raise
         raise psycopg2.OperationalError(
             f"safe_execute failed after {retries} retries: {query} with args {args}"
@@ -88,7 +90,7 @@ class Database:
         try:
             self.db.commit()
         except psycopg2.OperationalError as e:
-            print(f"[commit] OperationalError: {e} -- attempting reconnect.")
+            LOGGER.error(f"OperationalError: {e} -- attempting reconnect.")
             self.reconnect()
             self.db.commit()
 
@@ -107,10 +109,10 @@ class CRUD(Database):
             self.safe_execute(query)
             self.commit()
         except psycopg2.errors.DeadlockDetected as e:
-            print(f"Deadlock detected while creating table '{table_name}': {e}")
+            LOGGER.error(f"Deadlock detected while creating table '{table_name}': {e}")
             self.db.rollback()
         except Exception as e:
-            print(f"Error creating table: {e}")
+            LOGGER.error(f"Error creating table: {e}")
             self.db.rollback()
     
     def create_index(self, table_name, index_name, columns):
@@ -122,10 +124,10 @@ class CRUD(Database):
             self.safe_execute(query)
             self.commit()
         except psycopg2.errors.DeadlockDetected as e:
-            print(f"Deadlock detected while creating index '{index_name}' on table '{table_name}': {e}")
+            LOGGER.error(f"Deadlock detected while creating index '{index_name}' on table '{table_name}': {e}")
             self.db.rollback()
         except Exception as e:
-            print(f"Error creating index: {e}")
+            LOGGER.error(f"Error creating index: {e}")
             self.db.rollback()
 
     def drop_table(self, table_name):
@@ -134,8 +136,9 @@ class CRUD(Database):
         self.commit()
 
     def insert(self, table_name, columns, values):
-        query = f"INSERT INTO {table_name} ({columns}) VALUES ({values})"
-        self.safe_execute(query)
+        placeholders = ", ".join(["%s"] * len(values))
+        query = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        self.safe_execute(query, values)
         self.commit()
 
     def read(self, table_name, columns="*", conditions={}, special=""):
@@ -192,10 +195,10 @@ class CRUD(Database):
             self.safe_execute(query)
             self.commit()
         except psycopg2.errors.DeadlockDetected as e:
-            print(f"Deadlock detected while adding column to table '{table_name}': {e}")
+            LOGGER.error(f"Deadlock detected while adding column to table '{table_name}': {e}")
             self.db.rollback()
         except Exception as e:
-            print(f"Error adding column: {e}")
+            LOGGER.error(f"Error adding column: {e}")
             self.db.rollback()
 
     # HELPER FUNCTIONS
