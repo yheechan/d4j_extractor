@@ -15,7 +15,7 @@ NUM_THREADS=$3
 work_dir="/ssd_home/yangheechan/defects4j/${PID}"
 mkdir -p "$work_dir"
 
-out_dir="${work_dir}/out_dir/"
+out_dir="${work_dir}/out_dir"
 mkdir -p "$out_dir"
 
 cd "$work_dir"
@@ -61,5 +61,5 @@ rm -rf "$work_dir/$PID-${BID}b"
 
 # write to a text file of the command executed before
 
-echo "java -cp \"$cp_test:$PITEST_JAR\" $PIT_REPORTER_CLASS --reportDir $report_dir --targetClasses $src_classes --targetTests $test_classes --excludedClasses \"*Test*,*Tests*,*TestCase*,*testbed*\" --sourceDirs $src_dir --fullMatrixResearchMode --mutators ALL --threads $NUM_THREADS --measureExpectedTime" > "$report_dir/command_executed.txt"
+echo "java -cp \"$cp_test:$PITEST_JAR\" $PIT_REPORTER_CLASS --reportDir $report_dir --targetClasses $src_classes --targetTests $test_classes --excludedClasses \"*Test*,*Tests*,*TestCase*,*testbed*\" --sourceDirs $src_dir --fullMatrixResearchMode --mutators ALL --threads $NUM_THREADS" > "$report_dir/command_executed.txt"
 
