@@ -160,6 +160,8 @@ class ConstructorEngine:
             # Measure sbfl and mbfl scores
             measure_scores(self.DB, self.PID, bid, fid, lineIdx2lineData)
 
+            write_ranks(lineIdx2lineData)
+
             # Save the results to file as pickled JSON
             with open(os.path.join(self.OUT_DIR, f"{bid}_lineIdx2lineData.pkl"), "wb") as f:
                 pickle.dump(lineIdx2lineData, f)

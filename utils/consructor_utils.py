@@ -1,5 +1,6 @@
 from utils.sbfl_utils import *
 from utils.mbfl_utils import *
+from utils.rank_utils import add_sbfl_ranks, add_mbfl_ranks
 
 
 import logging
@@ -260,3 +261,27 @@ def measure_scores(DB, PID, BID, FID, lineIdx2lineData):
         measure_mbfl_susp_scores(
             lineIdx2lineData, using_mutants, mut_cnt, overall_data
         )
+
+def write_ranks(lineIdx2lineData):
+    """
+    Calculate ranks for each suspiciousness score and add them to the lineIdx2lineData.
+    Higher score → Lower (better) rank.
+    If multiple lines have the same score, they share the upper bound rank.
+    
+    Example:
+    lineIdx, score, rank
+    23, 0.90, 1
+    12, 0.38, 4  (equal scores get the last position)
+    31, 0.38, 4
+    21, 0.38, 4
+    7,  0.21, 5
+    
+    :param lineIdx2lineData: Mapping of line indices to line data.
+    """
+    # Calculate ranks for SBFL formulas
+    add_sbfl_ranks(lineIdx2lineData)
+
+    # Calculate ranks for MBFL formulas
+    add_mbfl_ranks(lineIdx2lineData, mut_cnt_range=(1, 11))
+    
+    LOGGER.info("Calculated ranks for all suspiciousness scores.")

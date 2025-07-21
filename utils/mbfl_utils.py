@@ -4,7 +4,7 @@ import math
 
 LOGGER = logging.getLogger(__name__)
 
-transition_types = {
+TRANSITION_TYPES = {
     "type1": "result_transition",
     "type2": "exception_type_transition",
     "type3": "exception_msg_transition",
@@ -55,7 +55,7 @@ def measure_transition_cnts(lineIdx2mutation, tcIdx2tcInfo):
         for mutation_data in mutation_list:
             mutation_idx = mutation_data['mutation_idx']
             
-            for transition_type, transition_key in transition_types.items():                
+            for transition_type, transition_key in TRANSITION_TYPES.items():                
                 f2p, p2f, f2f, p2p = get_transition_counts(mutation_data[transition_key], tcIdx2tcInfo)
 
                 mutation_data[transition_key] = {
@@ -95,7 +95,7 @@ def get_overall_data(using_mutants, total_failing_tcs, mut_cnt):
         overall_data["total_mutants"] += len(mutation_list)
 
         for mutation_data in mutation_list:
-            for transition_type, transition_key in transition_types.items():
+            for transition_type, transition_key in TRANSITION_TYPES.items():
                 f2p = mutation_data[transition_key]["f2p"]
                 p2f = mutation_data[transition_key]["p2f"]
                 f2f = mutation_data[transition_key]["f2f"]
@@ -163,14 +163,14 @@ def measure_metal_on_line(using_mutants, total_failing_tcs, transition_key, mut_
         metal_score = max(metal_scores)
 
     metal_data = {
-        f"mutCnt{mut_cnt}_{transition_key}_metal_score": metal_score
+        f"mutCnt{mut_cnt}_{transition_key}_final_metal_score": metal_score
     }
 
     return metal_data
 
 def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, mut_cnt, overall_data):
     default_values = {}
-    for transition_type, transition_key in transition_types.items():
+    for transition_type, transition_key in TRANSITION_TYPES.items():
         default_values[f"mutCnt{mut_cnt}_{transition_type}_abs_muts"] = 0
         default_values[f"mutCnt{mut_cnt}_{transition_type}_line_total_f2p"] = -10.0
         default_values[f"mutCnt{mut_cnt}_{transition_type}_line_total_p2f"] = -10.0
@@ -179,14 +179,14 @@ def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, mut_cnt, overall_d
         default_values[f"mutCnt{mut_cnt}_{transition_type}_muse_3"] = -10.0
         default_values[f"mutCnt{mut_cnt}_{transition_type}_muse_4"] = -10.0
         default_values[f"mutCnt{mut_cnt}_{transition_type}_final_muse_score"] = -10.0
-        default_values[f"mutCnt{mut_cnt}_{transition_type}_metal_score"] = -10.0
+        default_values[f"mutCnt{mut_cnt}_{transition_type}_final_metal_score"] = -10.0
 
     for lineIdx in lineIdx2lineData.keys():
         if lineIdx not in using_mutants:
             lineIdx2lineData[lineIdx] = {**lineIdx2lineData[lineIdx], **default_values}
             continue
         
-        for transition_type, transition_key in transition_types.items():
+        for transition_type, transition_key in TRANSITION_TYPES.items():
             overall_f2p = overall_data[f"mutCnt{mut_cnt}_{transition_type}_total_f2p"]
             overall_p2f = overall_data[f"mutCnt{mut_cnt}_{transition_type}_total_p2f"]
             total_failing_tcs = overall_data["total_failing_tcs"]
