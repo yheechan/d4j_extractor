@@ -4,6 +4,7 @@ from utils.consructor_utils import *
 import json
 import os
 import logging
+import pickle
 from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
@@ -27,10 +28,18 @@ class ConstructorEngine:
 
         self.D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
         self.WORK_DIR = f"{self.D4J_DIR}{self.PID}"
+        self.RESEARCH_DATA = self.os_copy.get("RESEARCH_DATA")
+        self.OUT_DIR = f"{self.RESEARCH_DATA}/{self.EL}/{self.PID}"
+        if not os.path.exists(self.OUT_DIR):
+            os.makedirs(self.OUT_DIR, exist_ok=True)
 
     def run(self):
+        # Get the lines in DB
+        self.BID2FID = get_bid2fid(self.DB, self.PID, self.EL)
+
         self.save_ground_truth()
-    
+        self.write_suspiciousness_scores()
+
     def save_ground_truth(self):
         # Prepare the database for saving ground truth
         self.prepare_database()
@@ -47,11 +56,8 @@ class ConstructorEngine:
         
         LOGGER.info(f"Saving ground truth for project {self.PID}.")
 
-        # Get the lines in DB
-        bid2fid = get_bid2fid(self.DB, self.PID, self.EL)
-
         # Insert ground truth data into the database
-        d4j_ground_truth_dir = self.os_copy.get("RESEARCH_DATA") + f"/d4j_ground_truth"
+        d4j_ground_truth_dir = self.RESEARCH_DATA + f"/d4j_ground_truth"
         if not os.path.exists(d4j_ground_truth_dir):
             LOGGER.error(f"Defects4J ground truth directory {d4j_ground_truth_dir} does not exist.")
             return
@@ -67,7 +73,7 @@ class ConstructorEngine:
             LOGGER.debug(f"Processing ground truth file {gid_file} for bug ID {bid}.")
 
             # Get the lines in DB
-            lineIdx2lineData = get_lineIdx2lineData(self.DB, bid2fid, bid)
+            lineIdx2lineData = get_lineIdx2lineData(self.DB, self.BID2FID, bid)
 
             with open(os.path.join(d4j_ground_truth_dir, gid_file), 'r') as file:
                 lines = file.readlines()
@@ -79,18 +85,18 @@ class ConstructorEngine:
 
                         if check_line_exists(lineIdx2lineData, file_name, line_num):
                             LOGGER.debug(f"\tLine exists: {file_name}:{line_num}")
-                            method = get_method(lineIdx2lineData, file_name, line_num)
-                            LOGGER.debug(f"\tGround truth saved: {file_name}:{method}:{line_num}")
+                            gt_line_idx, gt_method = get_method(lineIdx2lineData, file_name, line_num)
+                            LOGGER.debug(f"\tGround truth saved: {file_name}:{gt_method}:{line_num}")
                         else:
                             # if file_name:line_num doesn't exist in lines
                             # then add a ground truth as the nearest line
                             LOGGER.warning(f"\tLine does not exist: {file_name}:{line_num}. Adding nearest line.")
-                            nearest_line = get_nearest_line(lineIdx2lineData, file_name, line_num)
-                            if nearest_line:
-                                file_name = nearest_line['file']
-                                method = nearest_line['method']
-                                line_num = nearest_line['line_num']
-                                LOGGER.debug(f"\tGround truth saved (nearest): {file_name}:{method}:{line_num}")
+                            gt_line_idx, gt_data = get_nearest_line(lineIdx2lineData, file_name, line_num)
+                            if gt_data:
+                                file_name = gt_data['file']
+                                gt_method = gt_data['method']
+                                line_num = gt_data['line_num']
+                                LOGGER.debug(f"\tGround truth saved (nearest): {file_name}:{gt_method}:{line_num}")
                             else:
                                 LOGGER.error(f"\tNo nearest line found for {file_name}:{line_num}. Skipping ground truth.")
                                 raise ValueError(f"No nearest line found for {file_name}:{line_num}. Skipping ground truth.")
@@ -102,14 +108,15 @@ class ConstructorEngine:
                                 "pid": self.PID,
                                 "bid": bid,
                                 "file": file_name,
-                                "method": method,
-                                "line": line_num
+                                "method": gt_method,
+                                "line": line_num,
+                                "line_idx": gt_line_idx
                             }
                         )
 
                         # Check if ground truth already exists
                         if exists:
-                            LOGGER.debug(f"Ground truth already exists: {self.PID}, {bid}, {gid_cnt}, {file_name}, {method}, {line_num}")
+                            LOGGER.debug(f"Ground truth already exists: {self.PID}, {bid}, {gid_cnt}, {file_name}, {gt_method}, {line_num}")
                             continue
 
                         # Initiate a new ground truth id
@@ -117,14 +124,13 @@ class ConstructorEngine:
                         LOGGER.debug(f"\tgid: {gid_cnt}")
                         
                         # Insert ground truth into the database
-                        values = [self.PID, bid, gid_cnt, file_name, method, line_num, description]
+                        values = [self.PID, bid, gid_cnt, file_name, gt_method, line_num, gt_line_idx, description]
                         self.DB.insert(
                             "d4j_ground_truth_info",
-                            "pid, bid, gid, file, method, line, description",
+                            "pid, bid, gid, file, method, line, line_idx, description",
                             values
                         )
-                        LOGGER.info(f"Ground truth saved: {self.PID}, {bid}, {gid_cnt}, {file_name}, {method}, {line_num}, {description}")
-
+                        LOGGER.info(f"Ground truth saved: {self.PID}, {bid}, {gid_cnt}, {file_name}, {gt_method}, {line_num}, {description}")
 
     def prepare_database(self):
         if not self.DB.table_exists("d4j_ground_truth_info"):
@@ -135,7 +141,25 @@ class ConstructorEngine:
                 "file TEXT",
                 "method TEXT",
                 "line INT",
+                "line_idx INT",
                 "description TEXT",
             ]
             col_str = ", ".join(columns)
             self.DB.create_table("d4j_ground_truth_info", col_str)
+
+    def write_suspiciousness_scores(self):
+
+        for bid, fid in self.BID2FID.items():
+            LOGGER.info(f"Processing bug ID {bid} with fault index {fid}.")
+            # Get the lines in DB
+            lineIdx2lineData = get_lineIdx2lineData(self.DB, self.BID2FID, bid)
+
+            # Assign Ground Truth
+            assign_gt(self.DB, self.PID, bid, lineIdx2lineData)
+
+            # Measure sbfl and mbfl scores
+            measure_scores(self.DB, self.PID, bid, fid, lineIdx2lineData)
+
+            # Save the results to file as pickled JSON
+            with open(os.path.join(self.OUT_DIR, f"{bid}_lineIdx2lineData.pkl"), "wb") as f:
+                pickle.dump(lineIdx2lineData, f)
