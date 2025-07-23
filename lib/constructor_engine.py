@@ -10,9 +10,10 @@ from dotenv import load_dotenv
 LOGGER = logging.getLogger(__name__)
 
 class ConstructorEngine:
-    def __init__(self, pid, experiment_label):
+    def __init__(self, pid, experiment_label, mutation_cnt_range=10):
         self.PID = pid
         self.EL = experiment_label
+        self.MR = mutation_cnt_range
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -150,7 +151,7 @@ class ConstructorEngine:
     def write_suspiciousness_scores(self):
 
         # repeat ID
-        for rid in range(1, 11):
+        for rid in range(1, self.MR + 1):
             rid_dir = f"{self.OUT_DIR}/repeat_{rid}"
             if not os.path.exists(rid_dir):
                 os.makedirs(rid_dir, exist_ok=True)
