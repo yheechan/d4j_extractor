@@ -124,12 +124,16 @@ class PostProcessorEngine:
                     assert len(pos_indices) + len(neg_indices) == len(data["y"][version]), "Mismatch in indices and labels length"
 
                     # Set Training Dataset: 10 negative samples for each positive sample
-                    for pos_index in pos_indices:
+                    for pos_idx, pos_index in enumerate(pos_indices):
                         
                         # Sample 10 negative examples for this positive example
-                        random.seed(888)
-                        random.shuffle(neg_indices)
-                        for neg_index in neg_indices[:min(10, len(neg_indices))]:
+                        # Use deterministic seed based on version and position for consistency across methods
+                        seed_value = hash(f"{version}_{pos_idx}_{rid}_{group_index}") % (2**31)
+                        random.seed(seed_value)
+                        shuffled_neg_indices = neg_indices.copy()
+                        random.shuffle(shuffled_neg_indices)
+                        
+                        for neg_index in shuffled_neg_indices[:min(10, len(shuffled_neg_indices))]:
                             train_pos_x.append(data["x"][version][pos_index])
                             train_neg_x.append(data["x"][version][neg_index])
                 
@@ -141,10 +145,10 @@ class PostProcessorEngine:
                         test_x[version] = data["x"][version]
                         test_y[version] = data["y"][version]
                 
-                # Shuffle training data
-                random.seed(888)
+                # Shuffle training data with deterministic seeds
+                random.seed(hash(f"train_pos_{rid}_{group_index}") % (2**31))
                 random.shuffle(train_pos_x)
-                random.seed(888)
+                random.seed(hash(f"train_neg_{rid}_{group_index}") % (2**31))
                 random.shuffle(train_neg_x)
 
                 # Divide into train and validation sets
