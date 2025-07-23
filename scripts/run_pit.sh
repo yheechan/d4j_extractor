@@ -24,27 +24,26 @@ cd "$work_dir"
 rm -rf "$PID-${BID}b"; defects4j checkout -p "$PID" -v "${BID}b" -w "$PID-${BID}b"
 cd "$work_dir/$PID-${BID}b"
 
+src_classes=$(defects4j export -p classes.relevant | tr '\n' ',' | sed 's/,$//')
+test_classes=$(defects4j export -p tests.relevant | tr '\n' ',' | sed 's/,$//')
+src_dir=$(defects4j export -p dir.src.classes)
+cp_test=$(defects4j export -p cp.test)
+
 # Compile the project
 defects4j compile
 
-# Collect metadata
-cd "$work_dir/$PID-${BID}b"
-
-cp_test=$(defects4j export -p cp.test)
 
 # Enhanced classpath with JUnit 4
 enhanced_cp="$JUNIT4_JAR:$cp_test"
 
-src_classes=$(defects4j export -p classes.relevant | tr '\n' ',' | sed 's/,$//')
-test_classes=$(defects4j export -p tests.relevant | tr '\n' ',' | sed 's/,$//')
-src_dir=$(defects4j export -p dir.src.classes)
+
 
 # redirect the stderr and stdout to a log file
 report_dir="$out_dir/$PID-${BID}b-report"
 mkdir -p "$report_dir"
 log_file="$report_dir/pit-exec.log"
 
-java -cp "$enhanced_cp:$PITEST_JAR" \
+java -Xmx4g -Xms1g -cp "$enhanced_cp:$PITEST_JAR" \
   $PIT_REPORTER_CLASS \
   --reportDir "$report_dir" \
   --targetClasses $src_classes \
@@ -53,7 +52,7 @@ java -cp "$enhanced_cp:$PITEST_JAR" \
   --sourceDirs $src_dir \
   --fullMatrixResearchMode \
   --mutators ALL \
-  --mutationUnitSize 10 \
+  --mutationUnitSize 100 \
   --threads $NUM_THREADS \
   > "$log_file" 2>&1
 

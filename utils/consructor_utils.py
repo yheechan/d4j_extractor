@@ -103,7 +103,7 @@ def get_nearest_line(lineIdx2lineData, file_name, line_num):
 
     return nearest_line
 
-def assign_gt(DB, PID, BID, lineIdx2lineData):
+def assign_groundtruth(DB, PID, BID, lineIdx2lineData):
     """
     Assign ground truth based on the line data and insert it into the database.
     :param DB: Database connection object.
@@ -128,6 +128,8 @@ def get_tcIdx2tcInfo(DB, FID):
     """
     Get test case information for a specific fault index.
     :param DB: Database connection object.
+    :param PID: Project ID.
+    :param BID: Bug ID.
     :param FID: Fault index.
     :return: List of test case information.
     """
@@ -139,7 +141,9 @@ def get_tcIdx2tcInfo(DB, FID):
     tc_info = DB.read(
         "d4j_tc_info",
         columns=col_str,
-        conditions={"fault_idx": FID}
+        conditions={
+            "fault_idx": FID
+        }
     )
 
     tcIdx2tcInfo = {}
@@ -223,7 +227,7 @@ def get_total_failing_tcs(tcIdx2tcInfo):
     total_failing_tcs = sum(1 for tcInfo in tcIdx2tcInfo.values() if tcInfo['result'] == 1)
     return total_failing_tcs
 
-def measure_scores(DB, PID, BID, FID, lineIdx2lineData):
+def measure_scores(DB, FID, lineIdx2lineData):
     """
     Measure SBFL scores and save them to the database.
     :param DB: Database connection object.

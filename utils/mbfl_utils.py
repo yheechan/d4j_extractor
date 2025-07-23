@@ -1,5 +1,5 @@
 import logging
-import json
+import random
 import math
 
 LOGGER = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ def get_using_mutants(lineIdx2mutation, mut_cnt):
     """
     using_mutants = {}
     for line_idx, mutation_list in lineIdx2mutation.items():
+        random.shuffle(mutation_list)
         if len(mutation_list) >= mut_cnt:
             using_mutants[line_idx] = mutation_list[:mut_cnt]
         else:

@@ -29,7 +29,7 @@ class ConstructorEngine:
         self.D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
         self.WORK_DIR = f"{self.D4J_DIR}{self.PID}"
         self.RESEARCH_DATA = self.os_copy.get("RESEARCH_DATA")
-        self.OUT_DIR = f"{self.RESEARCH_DATA}/{self.EL}/{self.PID}"
+        self.OUT_DIR = f"{self.RESEARCH_DATA}/{self.EL}/{self.PID}/experiment_raw_results"
         if not os.path.exists(self.OUT_DIR):
             os.makedirs(self.OUT_DIR, exist_ok=True)
 
@@ -149,19 +149,25 @@ class ConstructorEngine:
 
     def write_suspiciousness_scores(self):
 
-        for bid, fid in self.BID2FID.items():
-            LOGGER.info(f"Processing bug ID {bid} with fault index {fid}.")
-            # Get the lines in DB
-            lineIdx2lineData = get_lineIdx2lineData(self.DB, self.BID2FID, bid)
+        # repeat ID
+        for rid in range(1, 11):
+            rid_dir = f"{self.OUT_DIR}/repeat_{rid}"
+            if not os.path.exists(rid_dir):
+                os.makedirs(rid_dir, exist_ok=True)
 
-            # Assign Ground Truth
-            assign_gt(self.DB, self.PID, bid, lineIdx2lineData)
+            for bid, fid in self.BID2FID.items():
+                LOGGER.info(f"Processing bug ID {bid} with fault index {fid}.")
+                # Get the lines in DB
+                lineIdx2lineData = get_lineIdx2lineData(self.DB, self.BID2FID, bid)
 
-            # Measure sbfl and mbfl scores
-            measure_scores(self.DB, self.PID, bid, fid, lineIdx2lineData)
+                # Assign Ground Truth
+                assign_groundtruth(self.DB, self.PID, bid, lineIdx2lineData)
 
-            write_ranks(lineIdx2lineData)
+                # Measure sbfl and mbfl scores
+                measure_scores(self.DB, fid, lineIdx2lineData)
 
-            # Save the results to file as pickled JSON
-            with open(os.path.join(self.OUT_DIR, f"{bid}_lineIdx2lineData.pkl"), "wb") as f:
-                pickle.dump(lineIdx2lineData, f)
+                write_ranks(lineIdx2lineData)
+
+                # Save the results to file as pickled JSON
+                with open(os.path.join(rid_dir, f"{bid}_lineIdx2lineData.pkl"), "wb") as f:
+                    pickle.dump(lineIdx2lineData, f)
