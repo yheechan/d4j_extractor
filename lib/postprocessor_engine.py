@@ -30,6 +30,11 @@ class PostProcessorEngine:
     def process_dataset(self):
         statement_data = {}
         faulty_statement_data = {}
+        # temp_dd = {} # ONLY FOR DEBUGGING
+        # for subject in SUBJECTS:
+        #     temp_dd[subject] = {}
+        #     for rid in range(1, self.RR + 1):
+        #         temp_dd[subject][f"repeat_{rid}"] = {}
         
         for rid in range(1, self.RR + 1):
             pp_data = {}
@@ -38,6 +43,8 @@ class PostProcessorEngine:
             
             # Over all subject, set dataset for both test and different methods
             for subject in SUBJECTS:
+                rid_key = f"repeat_{rid}"
+
                 rid_dir = f"{self.EL_DIR}/{subject}/experiment_raw_results/repeat_{rid}"
                 if not os.path.exists(rid_dir):
                     LOGGER.warning(f"Directory {rid_dir} does not exist.")
@@ -52,6 +59,8 @@ class PostProcessorEngine:
                     bid_pkl_file = os.path.join(rid_dir, bid_pkl_file_name)
 
                     bid_data = normalize_data(bid_pkl_file, self.MR)
+                    # temp_dd[subject][rid_key][bid_pkl_file_name] = bid_data # ONLY FOR DEBUGGING
+
 
                     #  Set the test dataset
                     set_statement_info = False
@@ -74,9 +83,29 @@ class PostProcessorEngine:
             # Divide dataset into test, train, validation set using proper 10-fold CV
             versions = list(pp_data["test_dataset"]["x"].keys())
             self.divide_dataset(pp_data, versions, rid)
+        
+        # # save temp data # ONLY FOR DEBUGGING
+        # self.save_temp_data(temp_dd)
 
         # Save the statement information
         self.save_stmt_info(statement_data, faulty_statement_data)
+    
+    # def save_temp_data(self, temp_dd): # ONLY FOR DEBUGGING
+    #     temp_dir = os.path.join(self.EL_DIR, "temp_pp_data")
+    #     if not os.path.exists(temp_dir):
+    #         os.makedirs(temp_dir, exist_ok=True)
+
+    #     for subject, subject_data in temp_dd.items():
+    #         for rid_key, rid_data in subject_data.items():
+    #             rid_dir = os.path.join(temp_dir, subject, rid_key)
+    #             if not os.path.exists(rid_dir):
+    #                 os.makedirs(rid_dir, exist_ok=True)
+
+    #             for bid_key, bid_data in rid_data.items():
+    #                 bid_path = os.path.join(rid_dir, bid_key)
+    #                 with open(bid_path, 'wb') as f:
+    #                     pickle.dump(bid_data, f)
+
 
     def divide_dataset(self, pp_data, versions, rid, train_val_split=0.9):
         random.seed(888)

@@ -8,7 +8,8 @@ TRANSITION_TYPES = {
     "type1": "result_transition",
     "type2": "exception_type_transition",
     "type3": "exception_msg_transition",
-    "type4": "stacktrace_transition"
+    "type4": "stacktrace_transition",
+    "type5": "all_types_transition"
 }
 
 
@@ -89,7 +90,12 @@ def get_overall_data(using_mutants, total_failing_tcs, mut_cnt):
         f"mutCnt{mut_cnt}_type4_total_f2p": 0,
         f"mutCnt{mut_cnt}_type4_total_p2f": 0,
         f"mutCnt{mut_cnt}_type4_total_f2f": 0,
-        f"mutCnt{mut_cnt}_type4_total_p2p": 0
+        f"mutCnt{mut_cnt}_type4_total_p2p": 0,
+
+        f"mutCnt{mut_cnt}_type5_total_f2p": 0,
+        f"mutCnt{mut_cnt}_type5_total_p2f": 0,
+        f"mutCnt{mut_cnt}_type5_total_f2f": 0,
+        f"mutCnt{mut_cnt}_type5_total_p2p": 0,
     }
 
     for line_idx, mutation_list in using_mutants.items():
