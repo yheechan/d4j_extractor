@@ -100,9 +100,8 @@ class ConstructorEngine:
                                 LOGGER.debug(f"\tGround truth saved (nearest): {file_name}:{gt_method}:{line_num}")
                             else:
                                 LOGGER.error(f"\tNo nearest line found for {file_name}:{line_num}. Skipping ground truth.")
-                                raise ValueError(f"No nearest line found for {file_name}:{line_num}. Skipping ground truth.")
-                        
-                        
+                                continue
+
                         exists = self.DB.value_exists(
                             "d4j_ground_truth_info",
                             conditions={

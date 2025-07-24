@@ -100,6 +100,7 @@ def get_nearest_line(lineIdx2lineData, file_name, line_num):
         LOGGER.info(f"Found nearest line for {file_name}:{line_num} - {nearest_line[1]['line_num']}")
     else:
         LOGGER.warning(f"No nearest line found for {file_name}:{line_num}.")
+        return (None, None)
 
     return nearest_line
 
@@ -162,6 +163,27 @@ def get_tcIdx2tcInfo(DB, FID):
 
     return tcIdx2tcInfo
 
+def combine_transitions(result_transition, exception_type_transition,
+                        exception_msg_transition, stacktrace_transition):
+    """
+    each type transition is a string of '0's and '1's.
+    Combine by or operation on each bit
+    :param result_transition: Result transition bit sequence.
+    :param exception_type_transition: Exception type transition bit sequence.
+    :param exception_msg_transition: Exception message transition bit sequence.
+    :param stacktrace_transition: Stacktrace transition bit sequence.
+    :return: Combined transition bit sequence.
+    """
+
+    
+    # Alternative Method 2: Using bitwise operations on integers (fastest for very long strings)
+    # Convert binary strings to integers, perform OR operation, convert back
+    int_result = (int(result_transition, 2) | 
+                  int(exception_type_transition, 2) |
+                  int(exception_msg_transition, 2) | 
+                  int(stacktrace_transition, 2))
+    return format(int_result, f'0{len(result_transition)}b')
+
 def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
     """
     Get mutation information for a specific fault index.
@@ -194,6 +216,11 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
                 result_transition, exception_type_transition, \
                 exception_msg_transition, stacktrace_transition, \
                 status, num_tests_run = mutation
+
+            all_types_transition = combine_transitions(
+                result_transition, exception_type_transition,
+                exception_msg_transition, stacktrace_transition
+            )
             
             if (class_name == line_class) \
                 and (method in line_method) \
@@ -204,6 +231,7 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
                     "exception_type_transition": exception_type_transition,
                     "exception_msg_transition": exception_msg_transition,
                     "stacktrace_transition": stacktrace_transition,
+                    "all_types_transition": all_types_transition,
                     "status": status,
                     "num_tests_run": num_tests_run
                 }
