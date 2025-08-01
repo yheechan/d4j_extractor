@@ -1,7 +1,6 @@
-import json
 import os
 import logging
-import math
+import shutil
 import random
 import pickle
 from dotenv import load_dotenv
@@ -9,7 +8,7 @@ from dotenv import load_dotenv
 from utils.postprocessor_utils import *
 
 LOGGER = logging.getLogger(__name__)
-SUBJECTS = ["Lang"]
+SUBJECTS = ["Lang", "Mockito", "Math"]
 
 class PostProcessorEngine:
     def __init__(self, experiment_label, mutation_cnt_range=10, repeat_range=10):
@@ -22,6 +21,11 @@ class PostProcessorEngine:
         self.RESEARCH_DATA = self.os_copy.get("RESEARCH_DATA")
         self.EL_DIR = f"{self.RESEARCH_DATA}/{self.EL}"
         self.OUT_DIR = f"{self.EL_DIR}/postprocessed_dataset"
+
+        if os.path.exists(self.OUT_DIR):
+            LOGGER.info(f"Removing existing output directory: {self.OUT_DIR}")
+            shutil.rmtree(self.OUT_DIR)
+        os.makedirs(self.OUT_DIR, exist_ok=True)
     
     def run(self):
         self.prepare_directory()

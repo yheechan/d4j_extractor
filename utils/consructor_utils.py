@@ -255,9 +255,10 @@ def get_total_failing_tcs(tcIdx2tcInfo):
     total_failing_tcs = sum(1 for tcInfo in tcIdx2tcInfo.values() if tcInfo['result'] == 1)
     return total_failing_tcs
 
-def measure_scores(DB, FID, lineIdx2lineData):
+def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
     """
     Measure SBFL scores and save them to the database.
+    :param EXP_CONFIG: Experiment configuration dictionary.
     :param DB: Database connection object.
     :param PID: Project ID.
     :param BID: Bug ID.
@@ -273,6 +274,11 @@ def measure_scores(DB, FID, lineIdx2lineData):
     # SBFL
     measure_spectrum(tcIdx2tcInfo, lineIdx2lineData)
     measure_sbfl_susp_scores(lineIdx2lineData)
+    # Calculate ranks for SBFL formulas
+    add_sbfl_ranks(lineIdx2lineData)
+    sorted_lineIdx = get_sorted_lineIdx(lineIdx2lineData, EXP_CONFIG["line_selection_formula"])
+
+
 
     # MBFL
     total_failing_tcs = get_total_failing_tcs(tcIdx2tcInfo)
@@ -285,35 +291,25 @@ def measure_scores(DB, FID, lineIdx2lineData):
     measure_transition_cnts(lineIdx2mutation, tcIdx2tcInfo)
     # LOGGER.debug(json.dumps(lineIdx2mutation, indent=4))
 
-    for mut_cnt in range(1, 11):
-        using_mutants = get_using_mutants(lineIdx2mutation, mut_cnt)
-        overall_data = get_overall_data(using_mutants, total_failing_tcs, mut_cnt)
-        # LOGGER.debug(json.dumps(using_mutants, indent=4))
+    for line_cnt in EXP_CONFIG["target_lines"]:
+        target_line_perc = line_cnt / 100.0
+        selection_amount = int(len(sorted_lineIdx) * target_line_perc)
+        selected_lineIdx = sorted_lineIdx[:selection_amount]
 
-        measure_mbfl_susp_scores(
-            lineIdx2lineData, using_mutants, mut_cnt, overall_data
-        )
+        LOGGER.info(f"Selected {len(selected_lineIdx)} lines for target line percentage {target_line_perc:.2%}.")
 
-def write_ranks(lineIdx2lineData):
-    """
-    Calculate ranks for each suspiciousness score and add them to the lineIdx2lineData.
-    Higher score → Lower (better) rank.
-    If multiple lines have the same score, they share the upper bound rank.
-    
-    Example:
-    lineIdx, score, rank
-    23, 0.90, 1
-    12, 0.38, 4  (equal scores get the last position)
-    31, 0.38, 4
-    21, 0.38, 4
-    7,  0.21, 5
-    
-    :param lineIdx2lineData: Mapping of line indices to line data.
-    """
-    # Calculate ranks for SBFL formulas
-    add_sbfl_ranks(lineIdx2lineData)
+        for mut_cnt in EXP_CONFIG["mutation_cnt"]:
+            first_key = next(iter(lineIdx2mutation))
+            if f"lineCnt{line_cnt}_mutCnt{mut_cnt}_all_types_transition_final_muse_score_rank" in lineIdx2lineData[first_key]:
+                LOGGER.debug(f"Skipping line count {line_cnt} and mutation count {mut_cnt} as scores already calculated.")
+                continue
+            using_mutants = get_using_mutants(lineIdx2mutation, selected_lineIdx, mut_cnt)
+            overall_data = get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt)
+            measure_mbfl_susp_scores(
+                lineIdx2lineData, using_mutants, line_cnt, mut_cnt, overall_data
+            )
+        #     break
+        # break
 
-    # Calculate ranks for MBFL formulas
-    add_mbfl_ranks(lineIdx2lineData, mut_cnt_range=(1, 11))
-    
-    LOGGER.info("Calculated ranks for all suspiciousness scores.")
+    # # Calculate ranks for MBFL formulas
+    add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG)

@@ -1,11 +1,25 @@
 import math
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 SUSP_FORMULA = [
     "tarantula", "ochiai", "dstar",
     "naish1", "naish2", "gp13"
 ]
 
+def get_sorted_lineIdx(lineIdx2lineData, std_formula):
+    form_key = f"{std_formula}_rank"
+
+    lineIdx_list = [(line_idx, data[form_key]) for line_idx, data in lineIdx2lineData.items()]
+    lineIdx_list.sort(key=lambda x: x[1], reverse=False)  # Sort by rank in ascending order
+    return lineIdx_list
+
 def measure_spectrum(tcIdx2tcInfo, lineIdx2lineData):
+    first_key = next(iter(lineIdx2lineData))
+    if 'ep' in lineIdx2lineData[first_key]:
+        return
+
     for tcIdx, tcInfo in tcIdx2tcInfo.items():
         result = tcInfo['result'] # 0: pass, 1: fail
         line_coverage = tcInfo['line_coverage_bit_sequence']
@@ -37,13 +51,24 @@ def measure_sbfl_susp_scores(lineIdx2lineData):
     Measure suspiciousness scores for each line based on the SBFL formulas.
     :param lineIdx2lineData: Mapping of line indices to line data.
     """
+    first_key = next(iter(lineIdx2lineData))
+
+    uncalced_susp_formulas = []
+    for formula in SUSP_FORMULA:
+        if formula not in lineIdx2lineData[first_key]:
+            uncalced_susp_formulas.append(formula)
+    
+    if not uncalced_susp_formulas:
+        LOGGER.debug("All SBFL formulas already calculated. Skipping.")
+        return
+
     for line_idx, data in lineIdx2lineData.items():
         ep = data['ep']
         ef = data['ef']
         np = data['np']
         nf = data['nf']
 
-        for formula in SUSP_FORMULA:
+        for formula in uncalced_susp_formulas:
             if formula == "tarantula":
                 numerator = ef / (ef + nf)
                 den_1 = (ep + np)

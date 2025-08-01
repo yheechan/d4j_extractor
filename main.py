@@ -25,7 +25,6 @@ def make_parser():
 
     # Arguments for ConstructorEngine
     parser.add_argument("-c", "--constructor", action="store_true", help="Run the constructor engine")
-    parser.add_argument("-mr", "--mutation-cnt-range", type=int, default=10, help="Mutation count range for constructor")
 
     # Arguments for PostProcessorEngine
     parser.add_argument("-pp", "--postprocessor", action="store_true", help="Run the postprocessor engine")
@@ -67,7 +66,7 @@ def main():
         if not args.project_id:
             logging.error("Project ID is required when running the constructor.")
             return
-        constructor_engine = ConstructorEngine(args.project_id, args.experiment_label, args.mutation_cnt_range)
+        constructor_engine = ConstructorEngine(args.project_id, args.experiment_label)
         constructor_engine.run()
     elif args.postprocessor:
         if not args.experiment_label:
