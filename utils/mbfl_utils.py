@@ -31,10 +31,17 @@ def get_using_mutants(lineIdx2mutation, selected_lineIdx, mut_cnt):
             using_mutants[line_idx] = mutation_list
     return using_mutants
 
-def get_transition_counts(transition_bit_seq, tcIdx2tcInfo):
+def get_transition_counts(transition_bit_seq, tcIdx2tcInfo, line_idx, tcs_reduction):
     f2p, p2f, f2f, p2p = 0, 0, 0, 0
+    execution_time_ms = 0
     
     for tcIdx, bit_val in enumerate(transition_bit_seq):
+
+        # Exclude test cases that does not execute the line of the mutant
+        if tcs_reduction == "Reduced" \
+            and tcIdx2tcInfo[tcIdx]["line_coverage_bit_sequence"][line_idx] == '0':
+            continue
+
         baseline_outcome = 1 if tcIdx2tcInfo[tcIdx]['result'] == 1 else 0
 
         if baseline_outcome == 1: # failing
@@ -47,10 +54,13 @@ def get_transition_counts(transition_bit_seq, tcIdx2tcInfo):
                 p2f += 1
             else:
                 p2p += 1
+        
+        # increment time
+        execution_time_ms += tcIdx2tcInfo[tcIdx]['execution_time_ms']
 
-    return f2p, p2f, f2f, p2p
+    return f2p, p2f, f2f, p2p, execution_time_ms
 
-def measure_transition_cnts(lineIdx2mutation, tcIdx2tcInfo):
+def measure_transition_counts(lineIdx2mutation, tcIdx2tcInfo, tcs_reduction):
     """
     Measure the transition counts for each mutant.
     :param lineIdx2mutation: Mapping of line indices to mutation data.
@@ -60,26 +70,28 @@ def measure_transition_cnts(lineIdx2mutation, tcIdx2tcInfo):
             mutation_idx = mutation_data['mutation_idx']
             
             for transition_type, transition_key in TRANSITION_TYPES.items():                
-                f2p, p2f, f2f, p2p = get_transition_counts(mutation_data[transition_key], tcIdx2tcInfo)
+                f2p, p2f, f2f, p2p, execution_time_ms = get_transition_counts(mutation_data[transition_key], tcIdx2tcInfo, line_idx, tcs_reduction)
 
                 mutation_data[transition_key] = {
                     "f2p": f2p,
                     "p2f": p2f,
                     "f2f": f2f,
-                    "p2p": p2p
+                    "p2p": p2p,
+                    "execution_time_ms": execution_time_ms
                 }
 
-def get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt):
+def get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt, tcs_reduction):
     overall_data = {
         "total_failing_tcs": total_failing_tcs,
         "total_mutants": 0,
     }
 
     for transition_type, transition_key in TRANSITION_TYPES.items():
-        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_f2p"] = 0
-        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_p2f"] = 0
-        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_f2f"] = 0
-        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_p2p"] = 0
+        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_f2p"] = 0
+        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_p2f"] = 0
+        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_f2f"] = 0
+        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_p2p"] = 0
+        overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms"] = 0
 
     for line_idx, mutation_list in using_mutants.items():
         overall_data["total_mutants"] += len(mutation_list)
@@ -90,11 +102,13 @@ def get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt):
                 p2f = mutation_data[transition_key]["p2f"]
                 f2f = mutation_data[transition_key]["f2f"]
                 p2p = mutation_data[transition_key]["p2p"]
+                execution_time_ms = mutation_data[transition_key]["execution_time_ms"]
 
-                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_f2p"] += f2p
-                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_p2f"] += p2f
-                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_f2f"] += f2f
-                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_p2p"] += p2p
+                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_f2p"] += f2p
+                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_p2f"] += p2f
+                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_f2f"] += f2f
+                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_p2p"] += p2p
+                overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms"] += execution_time_ms
 
     return overall_data
 
@@ -158,18 +172,19 @@ def measure_metal_on_line(using_mutants, total_failing_tcs, transition_key, line
 
     return metal_data
 
-def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt, overall_data):
+def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt, tcs_reduction, overall_data):
     default_values = {}
     for transition_type, transition_key in TRANSITION_TYPES.items():
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_abs_muts"] = 0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_line_total_f2p"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_line_total_p2f"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_muse_1"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_muse_2"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_muse_3"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_muse_4"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_final_muse_score"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_final_metal_score"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_total_execution_time_ms"] = 0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_abs_muts"] = 0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_line_total_f2p"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_line_total_p2f"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_1"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_2"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_3"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_4"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_final_muse_score"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_final_metal_score"] = -10.0
 
     for lineIdx in lineIdx2lineData.keys():
         if lineIdx not in using_mutants:
@@ -177,11 +192,17 @@ def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt,
             continue
         
         for transition_type, transition_key in TRANSITION_TYPES.items():
-            overall_f2p = overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_f2p"]
-            overall_p2f = overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_type}_total_p2f"]
+            overall_f2p = overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_f2p"]
+            overall_p2f = overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_p2f"]
             total_failing_tcs = overall_data["total_failing_tcs"]
+            total_execution_time_ms = overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms"]
 
             muse_data = measure_muse_on_line(using_mutants[lineIdx], overall_f2p, overall_p2f, transition_key, line_cnt, mut_cnt)
             metal_data = measure_metal_on_line(using_mutants[lineIdx], total_failing_tcs, transition_key, line_cnt, mut_cnt)
 
-            lineIdx2lineData[lineIdx] = {**lineIdx2lineData[lineIdx], **muse_data, **metal_data}
+            lineIdx2lineData[lineIdx] = {
+                f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms": total_execution_time_ms,
+                **lineIdx2lineData[lineIdx], 
+                **muse_data, 
+                **metal_data
+            }

@@ -85,11 +85,12 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
     :param lineIdx2lineData: Mapping of line indices to line data
     :param EXP_CONFIG: Experiment configuration containing target lines and mutation counts
     """
+    tcs_reduction = EXP_CONFIG["tcs_reduction"]
     for line_cnt in EXP_CONFIG["target_lines"]:
         for mut_cnt in EXP_CONFIG["mutation_cnt"]:
             for transition_type, transition_key in TRANSITION_TYPES.items():
                 # For MUSE formula
-                muse_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_key}_final_muse_score"
+                muse_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_muse_score"
                 
                 # Check if the key exists in at least one line's data
                 if any(muse_key in data for data in lineIdx2lineData.values()):
@@ -107,7 +108,7 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
                     LOGGER.debug(f"Added ranks for MUSE formula with lineCnt={line_cnt}, mutCnt={mut_cnt}, transition={transition_type}")
                 
                 # For METAL formula
-                metal_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_{transition_key}_final_metal_score"
+                metal_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_metal_score"
                 
                 # Check if the key exists in at least one line's data
                 if any(metal_key in data for data in lineIdx2lineData.values()):
@@ -124,4 +125,4 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
 
                     LOGGER.debug(f"Added ranks for METAL formula with lineCnt={line_cnt}, mutCnt={mut_cnt}, transition={transition_type}")
 
-    LOGGER.info(f"Added ranks for MBFL formulas with target_lines={EXP_CONFIG['target_lines']} and mutation_cnt={EXP_CONFIG['mutation_cnt']}")
+    LOGGER.info(f"Added ranks for MBFL formulas with target_lines={EXP_CONFIG['target_lines']} and mutation_cnt={EXP_CONFIG['mutation_cnt']} and tcs_reduction={tcs_reduction}")

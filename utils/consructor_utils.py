@@ -288,8 +288,7 @@ def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
     LOGGER.info(f"Total failing test cases: {total_failing_tcs}")
 
     lineIdx2mutation = get_lineIdx2mutation(DB, FID, lineIdx2lineData)
-    measure_transition_cnts(lineIdx2mutation, tcIdx2tcInfo)
-    # LOGGER.debug(json.dumps(lineIdx2mutation, indent=4))
+    measure_transition_counts(lineIdx2mutation, tcIdx2tcInfo, EXP_CONFIG["tcs_reduction"])
 
     for line_cnt in EXP_CONFIG["target_lines"]:
         target_line_perc = line_cnt / 100.0
@@ -304,12 +303,10 @@ def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
                 LOGGER.debug(f"Skipping line count {line_cnt} and mutation count {mut_cnt} as scores already calculated.")
                 continue
             using_mutants = get_using_mutants(lineIdx2mutation, selected_lineIdx, mut_cnt)
-            overall_data = get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt)
+            overall_data = get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt, EXP_CONFIG["tcs_reduction"])
             measure_mbfl_susp_scores(
-                lineIdx2lineData, using_mutants, line_cnt, mut_cnt, overall_data
+                lineIdx2lineData, using_mutants, line_cnt, mut_cnt, EXP_CONFIG["tcs_reduction"], overall_data
             )
-        #     break
-        # break
 
     # # Calculate ranks for MBFL formulas
     add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG)

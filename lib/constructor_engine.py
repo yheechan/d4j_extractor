@@ -43,8 +43,6 @@ class ConstructorEngine:
     def run(self):
         # Get the lines in DB
         self.BID2FID = get_bid2fid(self.DB, self.PID, self.EL)
-        # # FOR TESTING USE LETS USE ONLY ONE BUG
-        self.BID2FID = {bid: fid for bid, fid in self.BID2FID.items() if bid == 1}
 
         # Prepare the database for saving ground truth
         self.prepare_database()
