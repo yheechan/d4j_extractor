@@ -28,7 +28,7 @@ def make_parser():
 
     # Arguments for PostProcessorEngine
     parser.add_argument("-pp", "--postprocessor", action="store_true", help="Run the postprocessor engine")
-    parser.add_argument("-rr", "--repeat-range", type=int, default=10, help="Number of repeats for postprocessing")
+    parser.add_argument("-sb", "--subjects", type=str, nargs='+', default=["Lang"], help="List of subjects to process")
 
     return parser
 
@@ -72,7 +72,7 @@ def main():
         if not args.experiment_label:
             logging.error("Experiment label is required when running the postprocessor.")
             return
-        post_processor_engine = PostProcessorEngine(args.experiment_label, args.mutation_cnt_range, args.repeat_range)
+        post_processor_engine = PostProcessorEngine(args.experiment_label, args.subjects)
         post_processor_engine.run()
 
 

@@ -15,8 +15,8 @@ cd ../
 # mkdir -p ./log/Time
 # time python3 main.py -pid Time -e -p 2 -el attempt_1 -d > ./log/Time/Time_attempt_1.log 2>&1
 
-mkdir -p ./log/Chart
-time python3 main.py -pid Chart -e -p 2 -el attempt_1 -d > ./log/Chart/Chart_attempt_1.log 2>&1
+# mkdir -p ./log/Chart
+# time python3 main.py -pid Chart -e -p 2 -el attempt_1 -d > ./log/Chart/Chart_attempt_1.log 2>&1
 
-# mkdir -p ./log/Closure
-# time python3 main.py -pid Closure -e -p 2 -el attempt_1 -d > ./log/Closure/Closure_attempt_1.log 2>&1
+mkdir -p ./log/Closure
+time python3 main.py -pid Closure -e -p 6 -el attempt_1 -d > ./log/Closure/Closure_attempt_1.log 2>&1

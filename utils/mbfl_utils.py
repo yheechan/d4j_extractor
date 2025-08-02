@@ -176,15 +176,15 @@ def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt,
     default_values = {}
     for transition_type, transition_key in TRANSITION_TYPES.items():
         default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_total_execution_time_ms"] = 0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_abs_muts"] = 0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_line_total_f2p"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_line_total_p2f"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_1"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_2"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_3"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_muse_4"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_final_muse_score"] = -10.0
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_final_metal_score"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_abs_muts"] = 0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_line_total_f2p"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_line_total_p2f"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_muse_1"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_muse_2"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_muse_3"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_muse_4"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_muse_score"] = -10.0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_metal_score"] = -10.0
 
     for lineIdx in lineIdx2lineData.keys():
         if lineIdx not in using_mutants:

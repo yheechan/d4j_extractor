@@ -1,6 +1,6 @@
 cd ..
 
-time python3 main.py -pid Lang -el attempt_1 -c > ./log/Lang/Lang_constructor_attempt_1.log 2>&1
+# time python3 main.py -pid Lang -el attempt_1 -c > ./log/Lang/Lang_constructor_attempt_1.log 2>&1
 
 time python3 main.py -pid Mockito -el attempt_1 -c > ./log/Mockito/Mockito_constructor_attempt_1.log 2>&1
 

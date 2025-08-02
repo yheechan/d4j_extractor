@@ -8,13 +8,11 @@ from dotenv import load_dotenv
 from utils.postprocessor_utils import *
 
 LOGGER = logging.getLogger(__name__)
-SUBJECTS = ["Lang", "Mockito", "Math"]
 
 class PostProcessorEngine:
-    def __init__(self, experiment_label, mutation_cnt_range=10, repeat_range=10):
+    def __init__(self, experiment_label, subjects):
         self.EL = experiment_label
-        self.MR = mutation_cnt_range
-        self.RR = repeat_range
+        self.SUBJECTS = subjects
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -22,10 +20,13 @@ class PostProcessorEngine:
         self.EL_DIR = f"{self.RESEARCH_DATA}/{self.EL}"
         self.OUT_DIR = f"{self.EL_DIR}/postprocessed_dataset"
 
-        if os.path.exists(self.OUT_DIR):
-            LOGGER.info(f"Removing existing output directory: {self.OUT_DIR}")
-            shutil.rmtree(self.OUT_DIR)
-        os.makedirs(self.OUT_DIR, exist_ok=True)
+        if not os.path.exists(self.OUT_DIR):
+            os.makedirs(self.OUT_DIR, exist_ok=True)
+
+        curr_path = os.getcwd()
+        exp_config_file = os.path.join(curr_path, ".experiment_config")
+        with open(exp_config_file, 'r') as f:
+            self.EXP_CONFIG = json.load(f)
     
     def run(self):
         self.prepare_directory()
@@ -34,19 +35,20 @@ class PostProcessorEngine:
     def process_dataset(self):
         statement_data = {}
         faulty_statement_data = {}
-        # temp_dd = {} # ONLY FOR DEBUGGING
-        # for subject in SUBJECTS:
-        #     temp_dd[subject] = {}
-        #     for rid in range(1, self.RR + 1):
-        #         temp_dd[subject][f"repeat_{rid}"] = {}
-        
-        for rid in range(1, self.RR + 1):
+
+        for rid in range(1, self.EXP_CONFIG["num_repeats"] + 1):
             pp_data = {}
-            # Set for test dataset
             pp_data["test_dataset"] = {"x": {}, "y": {}}
+            dataset_pkl = f"{self.OUT_DIR}/repeat_{rid}/dataset.pkl"
+            if os.path.exists(dataset_pkl):
+                pp_data = pickle.load(open(dataset_pkl, 'rb'))
+                LOGGER.debug(f"Loaded existing dataset for repeat {rid} from {dataset_pkl}")
+            else:
+                LOGGER.debug(f"Creating new dataset for repeat {rid}")
+            # Set for test dataset
             
             # Over all subject, set dataset for both test and different methods
-            for subject in SUBJECTS:
+            for subject in self.SUBJECTS:
                 rid_key = f"repeat_{rid}"
 
                 rid_dir = f"{self.EL_DIR}/{subject}/experiment_raw_results/repeat_{rid}"
@@ -62,9 +64,7 @@ class PostProcessorEngine:
                     full_fault_id = f"{subject}_{bid}"
                     bid_pkl_file = os.path.join(rid_dir, bid_pkl_file_name)
 
-                    bid_data = normalize_data(bid_pkl_file, self.MR)
-                    # temp_dd[subject][rid_key][bid_pkl_file_name] = bid_data # ONLY FOR DEBUGGING
-
+                    bid_data = normalize_data(bid_pkl_file, self.EXP_CONFIG)
 
                     #  Set the test dataset
                     set_statement_info = False
@@ -77,38 +77,19 @@ class PostProcessorEngine:
                         pp_data["test_dataset"], full_fault_id, bid_data,
                         statement_data=statement_data, 
                         faulty_statement_data=faulty_statement_data,
-                        mtc=self.MR,
+                        mtc=self.EXP_CONFIG["mutation_cnt"][-1],  # Use the last mutation count for test dataset
                         set_statement_info=set_statement_info
                     )
 
-                    # Set for mutation_cnt methods
-                    set_mutation_cnt_methods(pp_data, bid_data, full_fault_id, self.MR)
+                    # Set for diff. methods
+                    set_for_methods(pp_data, bid_data, full_fault_id, self.EXP_CONFIG)
             
             # Divide dataset into test, train, validation set using proper 10-fold CV
             versions = list(pp_data["test_dataset"]["x"].keys())
             self.divide_dataset(pp_data, versions, rid)
         
-        # # save temp data # ONLY FOR DEBUGGING
-        # self.save_temp_data(temp_dd)
-
         # Save the statement information
         self.save_stmt_info(statement_data, faulty_statement_data)
-    
-    # def save_temp_data(self, temp_dd): # ONLY FOR DEBUGGING
-    #     temp_dir = os.path.join(self.EL_DIR, "temp_pp_data")
-    #     if not os.path.exists(temp_dir):
-    #         os.makedirs(temp_dir, exist_ok=True)
-
-    #     for subject, subject_data in temp_dd.items():
-    #         for rid_key, rid_data in subject_data.items():
-    #             rid_dir = os.path.join(temp_dir, subject, rid_key)
-    #             if not os.path.exists(rid_dir):
-    #                 os.makedirs(rid_dir, exist_ok=True)
-
-    #             for bid_key, bid_data in rid_data.items():
-    #                 bid_path = os.path.join(rid_dir, bid_key)
-    #                 with open(bid_path, 'wb') as f:
-    #                     pickle.dump(bid_data, f)
 
 
     def divide_dataset(self, pp_data, versions, rid, train_val_split=0.9):
@@ -124,7 +105,11 @@ class PostProcessorEngine:
         # Create fold sizes: some folds will have base_fold_size+1, others base_fold_size
         fold_sizes = [base_fold_size + (1 if i < extra_versions else 0) for i in range(10)]
         LOGGER.info(f"Fold sizes: {fold_sizes} (total: {sum(fold_sizes)})")
-        
+
+        dataset_pkl = f"{self.OUT_DIR}/repeat_{rid}/dataset.pkl"
+        with open(dataset_pkl, 'wb') as f:
+            pickle.dump(pp_data, f)
+
         # Create fold boundaries
         fold_boundaries = [0]
         for size in fold_sizes:
@@ -256,14 +241,17 @@ class PostProcessorEngine:
         if not os.path.exists(statement_info_dir):
             os.makedirs(statement_info_dir, exist_ok=True)
 
-        for rid in range(1, self.RR + 1):
+        tcs_reduction = self.EXP_CONFIG["tcs_reduction"]
+        for rid in range(1, self.EXP_CONFIG["num_repeats"] + 1):
             test_dir = f"{self.OUT_DIR}/repeat_{rid}/test_dataset"
             if not os.path.exists(test_dir):
                 os.makedirs(test_dir, exist_ok=True)
 
 
-            for mid in range(1, self.MR + 1):
-                mid_dir = f"{self.OUT_DIR}/repeat_{rid}/methods/mutCnt_{mid}"
-                if not os.path.exists(mid_dir):
-                    os.makedirs(mid_dir, exist_ok=True)
+            for line_cnt in self.EXP_CONFIG["target_lines"]:
+                for mut_cnt in self.EXP_CONFIG["mutation_cnt"]:
+                    method_dir = f"{self.OUT_DIR}/repeat_{rid}/methods/lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}"
+                    if not os.path.exists(method_dir):
+                        os.makedirs(method_dir, exist_ok=True)
+
 

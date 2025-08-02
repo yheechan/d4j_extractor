@@ -18,12 +18,13 @@ TRANSITION_TYPES = {
     "type4": "stacktrace_transition"
 }
 
-def normalize_data(pkl_file, MR=10):
+def normalize_data(pkl_file, EXP_CONFIG):
     """
     For each SBFL formula, MR-mutationType of muse and metal,
     normalize the suspiciousness scores to be between 0 and 1
     using the rank value among the lines.
     """
+    tcr = EXP_CONFIG["tcs_reduction"]
 
     with open(pkl_file, 'rb') as f:
         data = pickle.load(f)
@@ -43,21 +44,33 @@ def normalize_data(pkl_file, MR=10):
 
         # MBFL formula
         for formula in MBFL_FORMULA:
-            for mid in range(1, MR + 1):
-                for transition_type, transition_key in TRANSITION_TYPES.items():
-                    mbfl_key = f"mutCnt{mid}_{transition_key}_final_{formula}_score_rank"
-                    mbfl_norm_key = f"mutCnt{mid}_{transition_key}_final_{formula}_score_norm"
-                    norm_val = 1 - (line_data[mbfl_key] / line_length)
-                    line_data[mbfl_norm_key] = norm_val
+            for lnc in EXP_CONFIG["target_lines"]:
+                for mtc in EXP_CONFIG["mutation_cnt"]:
+                    for transition_type, transition_key in TRANSITION_TYPES.items():
+                        mbfl_key = f"lineCnt{lnc}_mutCnt{mtc}_tcs{tcr}_{transition_key}_final_{formula}_score_rank"
+                        mbfl_norm_key = f"lineCnt{lnc}_mutCnt{mtc}_tcs{tcr}_{transition_key}_final_{formula}_score_norm"
+                        norm_val = 1 - (line_data[mbfl_key] / line_length)
+                        line_data[mbfl_norm_key] = norm_val
     return data
 
-def set_dataset(dataset, full_fault_id, bid_data, statement_data=None, faulty_statement_data=None, mtc=10, set_statement_info=False):
+def set_dataset(
+        dataset, full_fault_id, bid_data, 
+        statement_data=None, faulty_statement_data=None, 
+        lnc=100, mtc=10, tcr="All", 
+        set_statement_info=False
+    ):
+
+    if full_fault_id in dataset["x"]:
+        LOGGER.debug(f"Dataset for {full_fault_id} already exists, skipping.")
+        return
+    else:
+        LOGGER.debug(f"Creating new dataset for {full_fault_id}")
+
     dataset["x"][full_fault_id] = []
     dataset["y"][full_fault_id] = []
 
-    LOGGER.debug(f"Setting dataset for {full_fault_id} with mtc={mtc}")
+    LOGGER.debug(f"Setting dataset for {full_fault_id} with lnc={lnc}, mtc={mtc}, tcr={tcr}")
     for line_idx, line_data in bid_data.items():
-        LOGGER.debug(f"Processing line index {line_idx} for {full_fault_id}")
         line_x_list = []
         # Add SBFL normalized values
         for formula in SBFL_FORMULA:
@@ -67,7 +80,7 @@ def set_dataset(dataset, full_fault_id, bid_data, statement_data=None, faulty_st
         # Add MBFL normalized values
         for formula in MBFL_FORMULA:
             for transition_type, transition_key in TRANSITION_TYPES.items():
-                mbfl_key = f"mutCnt{mtc}_{transition_key}_final_{formula}_score_norm"
+                mbfl_key = f"lineCnt{lnc}_mutCnt{mtc}_tcs{tcr}_{transition_key}_final_{formula}_score_norm"
                 line_x_list.append(line_data[mbfl_key])
 
         dataset["x"][full_fault_id].append(line_x_list)
@@ -86,14 +99,17 @@ def set_dataset(dataset, full_fault_id, bid_data, statement_data=None, faulty_st
             if line_data["fault_line"] == 1:
                 faulty_statement_data[full_fault_id].append([stmt_key])
 
-def set_mutation_cnt_methods(pp_data, bid_data, full_fault_id, MR=10):
+def set_for_methods(pp_data, bid_data, full_fault_id, EXP_CONFIG):
     """
     Set the mutation count methods in pp_data.
     """
-    for mid in range(1, MR + 1):
-        mid_key = f"mutCnt_{mid}"
-        if mid_key not in pp_data:
-            pp_data[mid_key] = {"x": {}, "y": {}}
-
-        set_dataset(pp_data[mid_key], full_fault_id, bid_data, mtc=mid)
-
+    tcr = EXP_CONFIG["tcs_reduction"]
+    for lnc in EXP_CONFIG["target_lines"]:
+        for mtc in EXP_CONFIG["mutation_cnt"]:
+            method_key = f"lineCnt{lnc}_mutCnt{mtc}_tcs{tcr}"
+            if method_key not in pp_data:
+                pp_data[method_key] = {"x": {}, "y": {}}
+            set_dataset(
+                pp_data[method_key], full_fault_id, bid_data, 
+                lnc=lnc, mtc=mtc, tcr=tcr, set_statement_info=False
+            )
