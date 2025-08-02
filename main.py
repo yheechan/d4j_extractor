@@ -1,10 +1,13 @@
 import argparse
 import logging
+import os
+from dotenv import load_dotenv
 
 from lib.extractor_engine import ExtractorEngine
 from lib.saver_engine import SaverEngine
 from lib.constructor_engine import ConstructorEngine
 from lib.postprocessor_engine import PostProcessorEngine
+from lib.slack import Slack
 
 def make_parser():
     parser = argparse.ArgumentParser(description="Extract dynamic data from defects4j")
@@ -43,7 +46,16 @@ def set_logger(verbose=False, debug=False):
 def main():
     parser = make_parser()
     args = parser.parse_args()
+
     set_logger(verbose=args.verbose, debug=args.debug)
+    load_dotenv()
+
+    slack = Slack(
+        slack_channel=os.getenv("SLACK_CHANNEL"),
+        slack_token=os.getenv("SLACK_TOKEN"),
+        bot_name="D4J Extractor Bot"
+    )
+    function_name = "main"
 
     logging.info("Starting the script with arguments: %s", args)
 
@@ -52,6 +64,8 @@ def main():
             logging.error("Project ID is required when running the extractor.")
             return
         extractor_engine = ExtractorEngine(args.project_id, args.parallel, args.experiment_label)
+        function_name = "ExtractorEngine"
+        slack.send_message(f"Starting {function_name} for project {args.project_id} with parallel={args.parallel}.")
         extractor_engine.run()
     elif args.save_results:
         if not args.project_id:
@@ -61,19 +75,27 @@ def main():
             logging.error("Bug ID is required when saving results.")
             return
         saver_engine = SaverEngine(args.project_id, args.bug_id, args.experiment_label)
+        function_name = "SaverEngine"
+        slack.send_message(f"Starting {function_name} for project {args.project_id} and bug {args.bug_id}.")
         saver_engine.run()
     elif args.constructor:
         if not args.project_id:
             logging.error("Project ID is required when running the constructor.")
             return
         constructor_engine = ConstructorEngine(args.project_id, args.experiment_label)
+        function_name = "ConstructorEngine"
+        slack.send_message(f"Starting {function_name} for project {args.project_id}.")
         constructor_engine.run()
     elif args.postprocessor:
         if not args.experiment_label:
             logging.error("Experiment label is required when running the postprocessor.")
             return
         post_processor_engine = PostProcessorEngine(args.experiment_label, args.subjects)
+        function_name = "PostProcessorEngine"
+        slack.send_message(f"Starting {function_name} for experiment {args.experiment_label}.")
         post_processor_engine.run()
+    
+    slack.send_message(f"{function_name} completed successfully.")
 
 
 if __name__ == "__main__":
