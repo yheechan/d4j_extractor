@@ -36,6 +36,20 @@ class PostProcessorEngine:
         statement_data = {}
         faulty_statement_data = {}
 
+        statements_pkl = f"{self.OUT_DIR}/statement_info/statements.pkl"
+        if os.path.exists(statements_pkl):
+            with open(statements_pkl, 'rb') as f:
+                statement_data = pickle.load(f)
+            LOGGER.debug(f"Loaded existing statements from {statements_pkl}")
+        else:
+            LOGGER.debug(f"Statements file {statements_pkl} does not exist, starting with empty statement data.")
+
+        faulty_statements_pkl = f"{self.OUT_DIR}/statement_info/faulty_statement_set.pkl"
+        if os.path.exists(faulty_statements_pkl):
+            with open(faulty_statements_pkl, 'rb') as f:
+                faulty_statement_data = pickle.load(f)
+            LOGGER.debug(f"Loaded existing faulty statements from {faulty_statements_pkl}")
+
         for rid in range(1, self.EXP_CONFIG["num_repeats"] + 1):
             pp_data = {}
             pp_data["test_dataset"] = {"x": {}, "y": {}}
