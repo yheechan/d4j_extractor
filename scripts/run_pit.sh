@@ -43,7 +43,7 @@ report_dir="$out_dir/$PID-${BID}b-report"
 mkdir -p "$report_dir"
 log_file="$report_dir/pit-exec.log"
 
-java -Xmx4g -Xms1g -cp "$enhanced_cp:$PITEST_JAR" \
+java -Xmx16g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PITEST_JAR" \
   $PIT_REPORTER_CLASS \
   --reportDir "$report_dir" \
   --targetClasses $src_classes \
