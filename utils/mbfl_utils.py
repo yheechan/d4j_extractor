@@ -175,7 +175,8 @@ def measure_metal_on_line(using_mutants, total_failing_tcs, transition_key, line
 def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt, tcs_reduction, overall_data):
     default_values = {}
     for transition_type, transition_key in TRANSITION_TYPES.items():
-        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_total_execution_time_ms"] = 0
+        default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_total_execution_time_ms"] = \
+            overall_data[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms"]
         default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_abs_muts"] = 0
         default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_line_total_f2p"] = -10.0
         default_values[f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_line_total_p2f"] = -10.0
@@ -201,7 +202,7 @@ def measure_mbfl_susp_scores(lineIdx2lineData, using_mutants, line_cnt, mut_cnt,
             metal_data = measure_metal_on_line(using_mutants[lineIdx], total_failing_tcs, transition_key, line_cnt, mut_cnt, tcs_reduction)
 
             lineIdx2lineData[lineIdx] = {
-                f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_type}_total_execution_time_ms": total_execution_time_ms,
+                f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_total_execution_time_ms": total_execution_time_ms,
                 **lineIdx2lineData[lineIdx], 
                 **muse_data, 
                 **metal_data
