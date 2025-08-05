@@ -43,7 +43,7 @@ report_dir="$out_dir/$PID-${BID}b-report"
 mkdir -p "$report_dir"
 log_file="$report_dir/pit-exec.log"
 
-java -Xmx16g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PITEST_JAR" \
+java -Xmx32g -Xms8g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PITEST_JAR" \
   $PIT_REPORTER_CLASS \
   --reportDir "$report_dir" \
   --targetClasses $src_classes \
@@ -52,7 +52,7 @@ java -Xmx16g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PIT
   --sourceDirs $src_dir \
   --fullMatrixResearchMode \
   --mutators ALL \
-  --mutationUnitSize 100 \
+  --mutationUnitSize 5 \
   --threads $NUM_THREADS \
   > "$log_file" 2>&1
 
