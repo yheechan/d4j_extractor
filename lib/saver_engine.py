@@ -29,14 +29,17 @@ class SaverEngine:
 
         self.D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
         self.WORK_DIR = f"{self.D4J_DIR}{self.PID}"
-        self.OUT_DIR = f"{self.D4J_DIR}{self.PID}/out_dir/{self.PID}-{self.BID}b-report"
+        self.RESULT_DIR = f"{self.D4J_DIR}{self.PID}/out_dir/{self.PID}-{self.BID}b-result"
+
+        self.PERFILEREPORT_DIR = f"{self.RESULT_DIR}/perFileReport"
+        self.SUBJECTINFO_DIR = f"{self.RESULT_DIR}/subjectInfo"
 
     def run(self):
-        self.save_fault()
-        self.save_tc_info()
+        # self.save_fault()
         self.save_line_info()
-        self.save_mutation_info()
-        self.zip_out_dir()
+        # self.save_tc_info()
+        # self.save_mutation_info()
+        # self.zip_out_dir()
     
     def save_fault(self):
         values = [self.PID, self.BID, self.EL]
@@ -62,6 +65,55 @@ class SaverEngine:
         self.fault_idx = self.fault_idx[0][0]
         LOGGER.info(f"Fault information saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
     
+    def save_line_info(self):
+        unique_line_idx = -1
+        line_data = {}
+        self.lineInfo2lineIdx = {}
+        for class_report in os.listdir(self.PERFILEREPORT_DIR):
+            line_info_csv = os.path.join(self.PERFILEREPORT_DIR, class_report, "line_info.csv")
+            with open(line_info_csv, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                # skip the header
+                next(reader, None)
+                for row in reader:
+                    # Assuming the CSV has columns: 'line_idx', 'file', 'line_info'
+                    line_id = row[0]
+                    code_filename = row[1]
+                    line_info = row[2]
+                    class_name = line_info.split("#")[0]
+                    method_name = line_info.split("#")[1].split(":")[0]
+                    line_num = line_info.split("#")[1].split(":")[1]
+
+                    # save line_data for unique lines
+                    if code_filename not in line_data:
+                        line_data[code_filename] = {}
+                    if class_name not in line_data[code_filename]:
+                        line_data[code_filename][class_name] = {}
+                    if method_name not in line_data[code_filename][class_name]:
+                        line_data[code_filename][class_name][method_name] = []
+                    if line_num not in line_data[code_filename][class_name][method_name]:
+                        line_data[code_filename][class_name][method_name].append(line_num)
+                        unique_line_idx += 1
+
+                        values = [
+                            unique_line_idx, code_filename, class_name, method_name, line_num
+                        ]
+                        # self.DB.insert(
+                        #     "d4j_line_info",
+                        #     "line_idx, file, class, method, line_num",
+                        #     values
+                        # )
+
+                        self.lineInfo2lineIdx[line_info] = {
+                            "line_idx": unique_line_idx,
+                            "file": code_filename,
+                            "class": class_name,
+                            "method": method_name,
+                            "line_num": line_num
+                        }
+    
+        LOGGER.info(f"Save {unique_line_idx+1} lines for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
+
     def save_tc_info(self):
         BASELINE_TEST_RESULTS_DIR = f"{self.OUT_DIR}/baselineTestResults"
         if not os.path.exists(BASELINE_TEST_RESULTS_DIR):
@@ -103,36 +155,6 @@ class SaverEngine:
 
         LOGGER.info(f"Test case information saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
     
-    def save_line_info(self):
-        LINE_INFO_CSV = f"{self.OUT_DIR}/line_info.csv"
-        if not os.path.exists(LINE_INFO_CSV):
-            LOGGER.warning(f"Line info CSV file {LINE_INFO_CSV} does not exist.")
-            return
-        
-        # Save line information to the database
-        with open(LINE_INFO_CSV, 'r') as csvfile:
-            reader = csv.reader(csvfile)
-            # skip the header
-            next(reader, None)
-            for row in reader:
-                # Assuming the CSV has columns: 'line_idx', 'file', 'line_info'
-                line_id = row[0]
-                code_filename = row[1]
-                line_info = row[2]
-                class_name = line_info.split("#")[0]
-                method_name = line_info.split("#")[1].split(":")[0]
-                line_num = line_info.split("#")[1].split(":")[1]
-
-                values = [
-                    self.fault_idx, line_id, code_filename, class_name, method_name, line_num
-                ]
-                self.DB.insert(
-                    "d4j_line_info",
-                    "fault_idx, line_idx, file, class, method, line_num",
-                    values
-                )
-    
-        LOGGER.info(f"Data saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
 
     def save_mutation_info(self):
         full_MUTATION_MATRIX_CSV = f"{self.OUT_DIR}/full_mutation_matrix.csv"

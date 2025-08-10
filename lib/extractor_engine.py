@@ -51,9 +51,23 @@ class ExtractorEngine:
         def prepare_server(server):
             make_directory(self.REMOTE_WORK_DIR, server)
 
-            send_file(self.SCRIPTS_DIR + "/run_pit.sh", self.REMOTE_D4J_DIR, server)
-            chmod_file(self.REMOTE_D4J_DIR + "run_pit.sh", "777", server)
+            scripts_dir = self.REMOTE_D4J_DIR + "scripts/"
 
+            # 1. send compile2prepare.sh
+            send_file(self.SCRIPTS_DIR + "/compile2prepare.sh", scripts_dir, server)
+            chmod_file(scripts_dir + "compile2prepare.sh", "777", server)
+
+            # 2. send measureExpectedTime.py and perFile_expected_time.sh
+            send_file(self.SCRIPTS_DIR + "/measureExpectedTime.py", scripts_dir, server)
+            send_file(self.SCRIPTS_DIR + "/perFile_expected_time.sh", scripts_dir, server)
+            chmod_file(scripts_dir + "perFile_expected_time.sh", "777", server)
+
+            # 3. send run_pit_all.py and perFile_pit.sh
+            send_file(self.SCRIPTS_DIR + "/run_pit_all.py", scripts_dir, server)
+            send_file(self.SCRIPTS_DIR + "/perFile_pit.sh", scripts_dir, server)
+            chmod_file(scripts_dir + "perFile_pit.sh", "777", server)
+
+            # 4. send main.py
             send_directory(self.LIB_DIR, self.REMOTE_D4J_DIR, server)
             send_directory(self.UTILS_DIR, self.REMOTE_D4J_DIR, server)
             send_file(self.MAIN_SCRIPT, self.REMOTE_D4J_DIR, server)
@@ -154,6 +168,18 @@ class ExtractorEngine:
         prepare_database()
     
     def run_mutation_testing(self, batch_size=5):
+        def compile2prepare(server, pid, bid):
+            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-results/compile2prepare-exec.log 2>&1"
+            execute_command(command, server)
+        
+        def measure_expected_time(server, pid, bid):
+            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
+            execute_command(command, server)
+        
+        def run_pit(server, pid, bid):
+            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
+            execute_command(command, server)
+
         def save_results(server, pid, bid, el):
             command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-report/saver-exec.log 2>&1"
             execute_command(command, server)
@@ -163,8 +189,9 @@ class ExtractorEngine:
         def run_pit_on_bugs(server, bug_ids):
             for bug_id in bug_ids:
                 LOGGER.info(f"Running PIT on {bug_id} on server {server}")
-                command = f"cd {self.REMOTE_D4J_DIR} && bash run_pit.sh {self.PID} {bug_id} {self.parallel}"
-                execute_command(command, server)
+                compile2prepare(server, self.PID, bug_id)
+                measure_expected_time(server, self.PID, bug_id)
+                run_pit(server, self.PID, bug_id)
                 save_results(server, self.PID, bug_id, self.EL)
 
         servers = self.SERVER_LIST
