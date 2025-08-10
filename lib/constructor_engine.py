@@ -154,62 +154,75 @@ class ConstructorEngine:
             self.DB.create_table("d4j_ground_truth_info", col_str)
 
     def write_suspiciousness_scores(self):
-
-        # repeat ID
+        # Create all repeat directories upfront
+        # Create all tasks as (repeat_id, bug_id, fault_id) combinations
+        all_tasks = []
         for rid in range(1, self.EXP_CONFIG["num_repeats"] + 1):
             rid_dir = f"{self.OUT_DIR}/repeat_{rid}"
             if not os.path.exists(rid_dir):
                 os.makedirs(rid_dir, exist_ok=True)
-
-            # Process bug IDs concurrently with batch size of 10
-            bid_fid_pairs = list(self.BID2FID.items())
-            batch_size = 50
-            
-            # Process in batches to control resource usage
-            for i in range(0, len(bid_fid_pairs), batch_size):
-                batch = bid_fid_pairs[i:i + batch_size]
-                LOGGER.info(f"Processing batch {i//batch_size + 1} with {len(batch)} bug IDs: {[bid for bid, _ in batch]}")
-                
-                with concurrent.futures.ThreadPoolExecutor(max_workers=batch_size) as executor:
-                    # Submit all tasks in the batch
-                    future_to_bid = {
-                        executor.submit(self._process_single_bug, rid_dir, bid, fid): bid 
-                        for bid, fid in batch
-                    }
-                    
-                    # Collect results as they complete
-                    completed_count = 0
-                    failed_bids = []
-                    
-                    for future in concurrent.futures.as_completed(future_to_bid):
-                        bid = future_to_bid[future]
-                        try:
-                            future.result()  # This will raise any exception that occurred
-                            completed_count += 1
-                            LOGGER.info(f"Successfully processed bug ID {bid} ({completed_count}/{len(batch)} completed in batch)")
-                        except Exception as exc:
-                            failed_bids.append(bid)
-                            LOGGER.error(f"Bug ID {bid} generated an exception: {exc}")
-                            # Continue processing other bugs instead of failing immediately
-                    
-                    # Report batch completion status
-                    if failed_bids:
-                        LOGGER.error(f"Batch {i//batch_size + 1} completed with {len(failed_bids)} failures: {failed_bids}")
-                        # Re-raise the first exception to maintain original behavior
-                        raise RuntimeError(f"Processing failed for bug IDs: {failed_bids}")
-                    else:
-                        LOGGER.info(f"Batch {i//batch_size + 1} completed successfully ({completed_count}/{len(batch)} bugs processed)")
-
-    def _process_single_bug(self, rid_dir, bid, fid):
-        """
-        Process a single bug ID - separated for concurrent execution.
+            for bid, fid in self.BID2FID.items():
+                all_tasks.append((rid, bid, fid))
         
-        :param rid_dir: Directory for the current repeat ID
+        total_tasks = len(all_tasks)
+        batch_size = 30
+        
+        LOGGER.info(f"Created {total_tasks} total tasks ({self.EXP_CONFIG['num_repeats']} repeats × {len(self.BID2FID)} bugs)")
+        
+        # Process all tasks in batches across repeats and bugs
+        for i in range(0, total_tasks, batch_size):
+            batch = all_tasks[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (total_tasks + batch_size - 1) // batch_size
+            
+            LOGGER.info(f"Processing batch {batch_num}/{total_batches} with {len(batch)} tasks")
+            LOGGER.debug(f"Batch {batch_num} tasks: {[(rid, bid) for rid, bid, _ in batch[:5]]}{'...' if len(batch) > 5 else ''}")
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as executor:
+                # Submit all tasks in the batch
+                future_to_task = {
+                    executor.submit(self._process_single_task, rid, bid, fid): (rid, bid)
+                    for rid, bid, fid in batch
+                }
+                
+                # Collect results as they complete
+                completed_count = 0
+                failed_tasks = []
+                
+                for future in concurrent.futures.as_completed(future_to_task):
+                    rid, bid = future_to_task[future]
+                    try:
+                        future.result()  # This will raise any exception that occurred
+                        completed_count += 1
+                        LOGGER.info(f"Successfully processed repeat {rid}, bug ID {bid} ({completed_count}/{len(batch)} completed in batch {batch_num})")
+                    except Exception as exc:
+                        failed_tasks.append((rid, bid))
+                        LOGGER.error(f"Repeat {rid}, bug ID {bid} generated an exception: {exc}")
+                        # Continue processing other tasks instead of failing immediately
+                
+                # Report batch completion status
+                if failed_tasks:
+                    LOGGER.error(f"Batch {batch_num} completed with {len(failed_tasks)} failures: {failed_tasks}")
+                    # Re-raise the first exception to maintain original behavior
+                    raise RuntimeError(f"Processing failed for tasks: {failed_tasks}")
+                else:
+                    LOGGER.info(f"Batch {batch_num} completed successfully ({completed_count}/{len(batch)} tasks processed)")
+        
+        LOGGER.info(f"All {total_tasks} tasks completed successfully!")
+
+    def _process_single_task(self, rid, bid, fid):
+        """
+        Process a single task (repeat_id, bug_id, fault_id) - separated for concurrent execution.
+        
+        :param rid: Repeat ID
         :param bid: Bug ID  
         :param fid: Fault index
         """
         start_time = time.time()
-        LOGGER.info(f"Processing bug ID {bid} with fault index {fid}.")
+        LOGGER.info(f"Processing repeat {rid}, bug ID {bid} with fault index {fid}.")
+        
+        # Create repeat directory path
+        rid_dir = f"{self.OUT_DIR}/repeat_{rid}"
         
         # Create a thread-local database connection for thread safety
         db_start = time.time()
@@ -223,7 +236,7 @@ class ConstructorEngine:
             slack_token=self.os_copy.get("SLACK_TOKEN"),
         )
         db_connection_time = time.time() - db_start
-        LOGGER.debug(f"Bug ID {bid}: Database connection established in {db_connection_time:.2f}s")
+        LOGGER.debug(f"Repeat {rid}, Bug ID {bid}: Database connection established in {db_connection_time:.2f}s")
         
         try:
             output_file = os.path.join(rid_dir, f"{bid}_lineIdx2lineData.pkl")
@@ -249,7 +262,7 @@ class ConstructorEngine:
                 pickle.dump(lineIdx2lineData, f)
             
             total_time = time.time() - start_time
-            LOGGER.debug(f"Saved results for bug ID {bid} to {output_file} (total time: {total_time:.2f}s)")
+            LOGGER.debug(f"Saved results for repeat {rid}, bug ID {bid} to {output_file} (total time: {total_time:.2f}s)")
             
         finally:
             # Ensure database connection is properly closed
@@ -258,6 +271,6 @@ class ConstructorEngine:
                     thread_db.cursor.close()
                 if hasattr(thread_db, 'db') and thread_db.db:
                     thread_db.db.close()
-                LOGGER.debug(f"Bug ID {bid}: Database connection closed")
+                LOGGER.debug(f"Repeat {rid}, Bug ID {bid}: Database connection closed")
             except Exception as e:
-                LOGGER.warning(f"Error closing database connection for bug ID {bid}: {e}")
+                LOGGER.warning(f"Error closing database connection for repeat {rid}, bug ID {bid}: {e}")
