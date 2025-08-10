@@ -50,7 +50,7 @@ java -Xmx20g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PIT
   --sourceDirs $src_dir \
   --fullMatrixResearchMode \
   --mutators ALL \
-  --mutationUnitSize 5 \
+  --mutationUnitSize 1 \
   --threads $NUM_THREADS \
   --measureExpectedTime \
   > "$log_file" 2>&1

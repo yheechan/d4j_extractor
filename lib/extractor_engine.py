@@ -7,6 +7,8 @@ from utils.command_utils import *
 import os
 import concurrent.futures
 import logging
+import queue
+import threading
 from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
@@ -169,7 +171,7 @@ class ExtractorEngine:
     
     def run_mutation_testing(self, batch_size=5):
         def compile2prepare(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-results/compile2prepare-exec.log 2>&1"
+            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
             execute_command(command, server)
         
         def measure_expected_time(server, pid, bid):
@@ -181,32 +183,58 @@ class ExtractorEngine:
             execute_command(command, server)
 
         def save_results(server, pid, bid, el):
-            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-results/saver-exec.log 2>&1"
+            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/saver-exec.log 2>&1"
             execute_command(command, server)
 
-        # 2. Run run_pit.sh <PID> <BID> <parallel>
-        # Distribute BIDs among servers, each server only takes its assigned BIDs sequentially
-        def run_pit_on_bugs(server, bug_ids):
-            for bug_id in bug_ids:
-                LOGGER.info(f"Running PIT on {bug_id} on server {server}")
-                compile2prepare(server, self.PID, bug_id)
-                measure_expected_time(server, self.PID, bug_id)
-                run_pit(server, self.PID, bug_id)
-                save_results(server, self.PID, bug_id, self.EL)
+        # Dynamic task distribution: servers pick up tasks as they become available
+        def process_bug_tasks(server, task_queue):
+            """Worker function that processes bugs from a shared queue"""
+            while True:
+                try:
+                    # Get next bug_id from queue with timeout
+                    bug_id = task_queue.get(timeout=1)
+                    if bug_id is None:  # Sentinel value to signal shutdown
+                        break
+                    
+                    LOGGER.info(f"Server {server} starting work on bug {bug_id}")
+                    try:
+                        compile2prepare(server, self.PID, bug_id)
+                        measure_expected_time(server, self.PID, bug_id)
+                        run_pit(server, self.PID, bug_id)
+                        save_results(server, self.PID, bug_id, self.EL)
+                        LOGGER.info(f"Server {server} completed work on bug {bug_id}")
+                    except Exception as e:
+                        LOGGER.error(f"Server {server} failed on bug {bug_id}: {e}")
+                    finally:
+                        task_queue.task_done()
+                        
+                except queue.Empty:
+                    # No more tasks available, worker can exit
+                    break
 
         servers = self.SERVER_LIST
         bid_list = self.BID_LIST
-        n_servers = len(servers)
-        # Distribute BIDs as evenly as possible
-        bid_chunks = [[] for _ in range(n_servers)]
-        for idx, bid in enumerate(bid_list):
-            bid_chunks[idx % n_servers].append(bid)
-            LOGGER.debug(f"Assigned BID {bid} to server {servers[idx % n_servers]}")
+        
+        # Create a shared task queue and populate it with all bug IDs
+        task_queue = queue.Queue()
+        for bug_id in bid_list:
+            task_queue.put(bug_id)
+            LOGGER.debug(f"Added bug {bug_id} to task queue")
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=n_servers) as executor:
-            futures = [executor.submit(run_pit_on_bugs, server, server_bids) for server, server_bids in zip(servers, bid_chunks)]
+        # Start worker threads for each server
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(servers)) as executor:
+            futures = [executor.submit(process_bug_tasks, server, task_queue) for server in servers]
+            
+            # Wait for all tasks to be completed
+            task_queue.join()
+            
+            # Signal all workers to shut down by adding sentinel values
+            for _ in servers:
+                task_queue.put(None)
+            
+            # Wait for all workers to finish
             for future in concurrent.futures.as_completed(futures):
                 try:
                     future.result()
                 except Exception as e:
-                    LOGGER.error(f"Error running PIT on bug: {e}")
+                    LOGGER.error(f"Error in worker thread: {e}")

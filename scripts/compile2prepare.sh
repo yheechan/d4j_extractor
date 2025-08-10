@@ -17,14 +17,21 @@ mkdir -p "$pid_dir"
 out_dir="${pid_dir}/out_dir"
 mkdir -p "$out_dir"
 
+result_dir="$out_dir/$PID-${BID}b-result"
+subjectInfo_dir="$result_dir/subjectInfo"
+perFileReport_dir="$result_dir/perFileReport"
+perFileLog_dir="$result_dir/perFileLog"
+mkdir -p "$result_dir"
+mkdir -p "$subjectInfo_dir"
+mkdir -p "$perFileReport_dir"
+mkdir -p "$perFileLog_dir"
+
 cd "$pid_dir"
 
 # Checkout
 rm -rf "$PID-${BID}b"; defects4j checkout -p "$PID" -v "${BID}b" -w "$PID-${BID}b"
 cd "$pid_dir/$PID-${BID}b"
 
-subjectInfo_dir="$out_dir/$PID-${BID}b-result/subjectInfo"
-mkdir -p "$subjectInfo_dir"
 
 src_classes=$(defects4j export -p classes.relevant | tr '\n' ',' | sed 's/,$//')
 echo $src_classes > "$subjectInfo_dir/src_classes.txt"
@@ -40,4 +47,3 @@ echo $cp_test > "$subjectInfo_dir/cp_test.txt"
 
 # Compile the project
 defects4j compile
-
