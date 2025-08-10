@@ -238,11 +238,14 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
                 lineIdx2mutation[lineIdx].append(mutation_data)
 
     # shuffle the mutation list for each line
+    mut_exists = False
     for line_idx, mutation_list in lineIdx2mutation.items():
         if mutation_list:
             random.shuffle(mutation_list)
-        else:
-            LOGGER.warning(f"No mutations found for line index {line_idx}.")
+            mut_exists = True
+    
+    if not mut_exists:
+        LOGGER.warning(f"No mutations found for fault index {FID}.")
 
     return lineIdx2mutation
 

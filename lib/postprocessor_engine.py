@@ -91,7 +91,9 @@ class PostProcessorEngine:
                         pp_data["test_dataset"], full_fault_id, bid_data,
                         statement_data=statement_data, 
                         faulty_statement_data=faulty_statement_data,
+                        lnc=self.EXP_CONFIG["target_lines"][-1],  # Use the last line count for test dataset
                         mtc=self.EXP_CONFIG["mutation_cnt"][-1],  # Use the last mutation count for test dataset
+                        tcr="All",  # Use "All" for test dataset
                         set_statement_info=set_statement_info
                     )
 
