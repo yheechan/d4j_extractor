@@ -12,36 +12,6 @@ def parse_args():
     parser.add_argument("--num-threads", type=str, required=True, help="Number of threads to use")
     return parser.parse_args()
 
-def read_results(src_classes, perFileLog_dir):
-    result = {}
-    for src_class in src_classes:
-        # lets read log
-        log_file = os.path.join(perFileLog_dir, f"{src_class}-log/expected-time-exec.log")
-
-        result[src_class] = {}
-        check = False
-        with open(log_file, "r") as f:
-            log_contents = f.readlines()
-            for line in log_contents:
-                if "=== Time Estimation Results ===" in line:
-                    check = True
-                
-                if not check:
-                    continue
-
-                if "Number of failing tests:" in line:
-                    result[src_class]["failing_tests"] = int(line.split(":")[-1].strip())
-                elif "Number of passing tests:" in line:
-                    result[src_class]["passing_tests"] = int(line.split(":")[-1].strip())
-                elif "Lines covered by failing tests:" in line:
-                    result[src_class]["lines_covered_by_failing_tests"] = int(line.split(":")[-1].strip())
-                elif "Lines covered by passing tests:" in line:
-                    result[src_class]["lines_covered_by_passing_tests"] = int(line.split(":")[-1].strip())
-                elif "Estimated time with overhead (15%):" in line: # Estimated time with overhead (15%): 1.8 minutes
-                    result[src_class]["estimated_time"] = float(line.split(":")[-1].strip().split(" ")[0])
-
-    return result
-
 def execute_perFile_pit(PID, BID, NUM_THREADS, src_class):
     # 1. execute perFile_pit.sh <PID> <BID>
     perFile_pit_script = os.path.join(CWD, "perFile_pit.sh")
@@ -91,6 +61,14 @@ def main():
     if os.path.exists(work_dir):
         sp.run(f"rm -rf {work_dir}", shell=True)
         print(f"Removed work directory: {work_dir}")
+    
+    # if any of execution result is "error", exit with code 1
+    if "Error" in execution_results.values():
+        print("Some executions failed. Exiting with code 1.")
+        exit(1)
+    else:
+        print("All executions succeeded. Exiting with code 0.")
+        exit(0)
     
 if __name__ == "__main__":
     main()

@@ -48,6 +48,7 @@ java -Xmx20g -Xms4g -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -cp "$enhanced_cp:$PIT
   --targetTests $test_classes \
   --excludedClasses "*Test*,*Tests*,*TestCase*,*testbed*" \
   --sourceDirs $src_dir \
+  --outputFormats=CSV \
   --fullMatrixResearchMode \
   --mutators ALL \
   --mutationUnitSize 1 \

@@ -170,16 +170,20 @@ class ExtractorEngine:
         prepare_database()
     
     def run_mutation_testing(self, batch_size=5):
+        def prepare_dir(server, pid, bid):
+            command = f"mkdir -p {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo"
+            execute_command(command, server)
+
         def compile2prepare(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
             execute_command(command, server)
         
         def measure_expected_time(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
             execute_command(command, server)
         
         def run_pit(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}/scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
             execute_command(command, server)
 
         def save_results(server, pid, bid, el):
@@ -198,6 +202,7 @@ class ExtractorEngine:
                     
                     LOGGER.info(f"Server {server} starting work on bug {bug_id}")
                     try:
+                        prepare_dir(server, self.PID, bug_id)
                         compile2prepare(server, self.PID, bug_id)
                         measure_expected_time(server, self.PID, bug_id)
                         run_pit(server, self.PID, bug_id)
