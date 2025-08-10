@@ -16,3 +16,14 @@ PYTHONPATH=. pytest -s tests/test_file_utils.py
 ```
 PYTHONPATH=. pytest -s tests/test_file_utils.py::test_receive_directory
 ```
+
+
+### Running PIT
+```
+cd scripts/
+./compile2prepare.sh <pid> <bid>
+python3 measureExpectedTime.py --pid <pid> --bid <bid> --num-threads <num-threads>
+python3 run_pit_all.py --pid <pid> --bid <bid> --num-threads <num-threads>
+cd ../
+python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v
+```

@@ -35,6 +35,8 @@ def read_results(src_classes, perFileLog_dir):
                     result[src_class]["passing_tests"] = int(line.split(":")[-1].strip())
                 elif "Lines covered by failing tests:" in line:
                     result[src_class]["lines_covered_by_failing_tests"] = int(line.split(":")[-1].strip())
+                elif "Number of mutations after filter:" in line:
+                    result[src_class]["mutations_after_filter"] = int(line.split(":")[-1].strip())
                 elif "Lines covered by passing tests:" in line:
                     result[src_class]["lines_covered_by_passing_tests"] = int(line.split(":")[-1].strip())
                 elif "Estimated time with overhead (15%):" in line: # Estimated time with overhead (15%): 1.8 minutes

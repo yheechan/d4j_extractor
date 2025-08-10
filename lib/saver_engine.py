@@ -35,35 +35,41 @@ class SaverEngine:
         self.SUBJECTINFO_DIR = f"{self.RESULT_DIR}/subjectInfo"
 
     def run(self):
+        self.USING_CLASSES = self.get_using_classes()
         self.save_fault()
         self.save_line_info()
         self.save_tc_info()
-        # self.save_mutation_info()
-        # self.zip_out_dir()
+        self.save_mutation_info()
+        self.zip_result_dir()
     
+    def get_using_classes(self):
+        using_src_classes_txt = os.path.join(self.SUBJECTINFO_DIR, "using_src_classes.txt")
+        with open(using_src_classes_txt, "r") as f:
+            using_src_classes = f.read().strip().split(",")
+        return [src_class.strip() for src_class in using_src_classes]
+
     def save_fault(self):
         values = [self.PID, self.BID, self.EL]
-        self.fault_idx = 999
-        # self.DB.insert(
-        #     "d4j_fault_info",
-        #     "project, bug_id, experiment_label",
-        #     values
-        # )
+        self.DB.insert(
+            "d4j_fault_info",
+            "project, bug_id, experiment_label",
+            values
+        )
 
-        # self.fault_idx = self.DB.read(
-        #     "d4j_fault_info",
-        #     columns="fault_idx",
-        #     conditions={
-        #         "project": self.PID,
-        #         "bug_id": self.BID,
-        #         "experiment_label": self.EL
-        #     }
-        # )
+        self.fault_idx = self.DB.read(
+            "d4j_fault_info",
+            columns="fault_idx",
+            conditions={
+                "project": self.PID,
+                "bug_id": self.BID,
+                "experiment_label": self.EL
+            }
+        )
 
-        # if not self.fault_idx:
-        #     LOGGER.error(f"Failed to retrieve fault index for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
-        #     return
-        # self.fault_idx = self.fault_idx[0][0]
+        if not self.fault_idx:
+            LOGGER.error(f"Failed to retrieve fault index for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
+            return
+        self.fault_idx = self.fault_idx[0][0]
         LOGGER.info(f"Fault information saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL} with fault index {self.fault_idx}.")
 
     def save_line_info(self):
@@ -71,12 +77,11 @@ class SaverEngine:
         self.lineInfo2lineIdx = {}
         self.class2lineInfo = {}
 
-        for class_report in os.listdir(self.PERFILEREPORT_DIR):
-            target_class = class_report.split("-")[0]
+        for target_class in self.USING_CLASSES:
             if target_class not in self.class2lineInfo:
                 self.class2lineInfo[target_class] = {}
 
-            line_info_csv = os.path.join(self.PERFILEREPORT_DIR, class_report, "line_info.csv")
+            line_info_csv = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "line_info.csv")
             with open(line_info_csv, 'r') as csvfile:
                 reader = csv.reader(csvfile)
                 # skip the header
@@ -112,13 +117,13 @@ class SaverEngine:
 
                         # Save the line information to DB
                         values = [
-                            unique_line_idx, code_filename, class_name, method_name, line_num
+                            self.fault_idx, unique_line_idx, code_filename, class_name, method_name, line_num
                         ]
-                        # self.DB.insert(
-                        #     "d4j_line_info",
-                        #     "line_idx, file, class, method, line_num",
-                        #     values
-                        # )
+                        self.DB.insert(
+                            "d4j_line_info",
+                            "fault_idx, line_idx, file, class, method, line_num",
+                            values
+                        )
 
     
         LOGGER.info(f"Save {unique_line_idx+1} lines for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
@@ -138,12 +143,11 @@ class SaverEngine:
         failing_tcs_count = 0
         passing_tcs_count = 0
 
-        for class_report in os.listdir(self.PERFILEREPORT_DIR):
-            target_class = class_report.split("-")[0]
+        for target_class in self.USING_CLASSES:
             if target_class not in self.class2tcsInfo:
                 self.class2tcsInfo[target_class] = {}
 
-            baseline_test_results_dir = os.path.join(self.PERFILEREPORT_DIR, class_report, "baselineTestResults")
+            baseline_test_results_dir = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "baselineTestResults")
             for result_file in os.listdir(baseline_test_results_dir):
                 if not result_file.endswith(".json"):
                     continue
@@ -196,7 +200,7 @@ class SaverEngine:
                         if execution_time_ms > self.project_tcs_data[test_name]["execution_time_ms"]:
                             # Update the existing test case data with the new one if it has a longer execution time
                             self.project_tcs_data[test_name]["execution_time_ms"] = execution_time_ms
-                        self.update_cov_bit_sequence(
+                        self.update_line_cov_bit_sequence(
                             self.project_tcs_data[test_name]["line_coverage_bit_sequence"],
                             dest_line_bit_seq,
                             self.class2lineInfo[target_class]
@@ -212,59 +216,90 @@ class SaverEngine:
                 tc_data["stacktrace"]
             ]
             LOGGER.debug(f"{test_name} - {tc_data['tc_idx']} - {tc_data['result']} - {tc_data['bit_sequence_length']}\n\t{cov_bit_seq}")
-            # self.DB.insert(
-            #     "d4j_tc_info",
-            #     "fault_idx, tc_idx, test_name, result, execution_time_ms, bit_sequence_length, line_coverage_bit_sequence, exception_type, exception_msg, stacktrace",
-            #     values
-            # )
+            self.DB.insert(
+                "d4j_tc_info",
+                "fault_idx, tc_idx, test_name, result, execution_time_ms, bit_sequence_length, line_coverage_bit_sequence, exception_type, exception_msg, stacktrace",
+                values
+            )
 
         LOGGER.info(f"Save {unique_tc_idx+1} tcs information for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
         LOGGER.info(f"Total failing tcs: {failing_tcs_count}, passing tcs: {passing_tcs_count} for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
 
+    def update_mut_cov_bit_sequence(self, built_bit_sequence, src_bit_seq, classTcsInfo_data):
+        for tc_name, tc_data in self.project_tcs_data.items():
+            if tc_name in classTcsInfo_data:
+                src_tc_idx = int(classTcsInfo_data[tc_name]["tc_idx"])
+                dest_tc_idx = tc_data["tc_idx"]
+                if src_bit_seq[src_tc_idx] == "1":
+                    built_bit_sequence[dest_tc_idx] = "1"
+
     def save_mutation_info(self):
-        full_MUTATION_MATRIX_CSV = f"{self.OUT_DIR}/full_mutation_matrix.csv"
-        if not os.path.exists(full_MUTATION_MATRIX_CSV):
-            LOGGER.warning(f"Full mutation matrix CSV file {full_MUTATION_MATRIX_CSV} does not exist.")
-            return
-        
-        # Save mutation information to the database
-        with open(full_MUTATION_MATRIX_CSV, 'r') as csvfile:
-            reader = csv.reader(csvfile)
-            # skip the header
-            next(reader, None)
-            for row in reader:
-                # Assuming the CSV has columns: mutant_id,class,method,line,mutator,result_transition,exception_type_transition,exception_msg_transition,stacktrace_transition,status,num_tests_run
-                mutation_idx = row[0]
-                class_name = row[1]
-                method = row[2]
-                line = row[3]
-                mutator = row[4]
-                result_transition = row[5]
-                exception_type_transition = row[6]
-                exception_msg_transition = row[7]
-                stacktrace_transition = row[8]
-                status = row[9]
-                num_tests_run = row[10]
+        unique_mutation_idx = -1
 
-                values = [
-                    self.fault_idx, mutation_idx, class_name, method, line,
-                    mutator, result_transition, exception_type_transition, status,
-                    exception_msg_transition, stacktrace_transition, num_tests_run
-                ]
-                self.DB.insert(
-                    "d4j_mutation_info",
-                    "fault_idx, mutation_idx, class, method, line, mutator, result_transition, exception_type_transition, status, exception_msg_transition, stacktrace_transition, num_tests_run",
-                    values
-                )
+        for target_class in self.USING_CLASSES:
+            result_csv = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "full_mutation_matrix.csv")
+            with open(result_csv, 'r') as csvfile:
+                reader = csv.reader(csvfile)
+                # skip the header
+                next(reader, None)
+                for row in reader:
+                    # Assuming the CSV has columns: mutant_id,class,method,line,mutator,result_transition,exception_type_transition,exception_msg_transition,stacktrace_transition,status,num_tests_run
+                    mutation_idx = row[0]
+                    class_name = row[1]
+                    method = row[2]
+                    line = row[3]
+                    mutator = row[4]
+                    result_transition = row[5]
+                    exception_type_transition = row[6]
+                    exception_msg_transition = row[7]
+                    stacktrace_transition = row[8]
+                    status = row[9]
+                    num_tests_run = row[10]
 
-        LOGGER.info(f"Data saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
+                    built_result_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
+                    built_exc_type_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
+                    built_exc_msg_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
+                    built_stacktrace_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
+                    self.update_mut_cov_bit_sequence(
+                        built_result_cov, result_transition, self.class2lineInfo[target_class]
+                    )
+                    self.update_mut_cov_bit_sequence(
+                        built_exc_type_cov, exception_type_transition, self.class2lineInfo[target_class]
+                    )
+                    self.update_mut_cov_bit_sequence(
+                        built_exc_msg_cov, exception_msg_transition, self.class2lineInfo[target_class]
+                    )
+                    self.update_mut_cov_bit_sequence(
+                        built_stacktrace_cov, stacktrace_transition, self.class2lineInfo[target_class]
+                    )
 
-    def zip_out_dir(self):
-        zip_file = f"{self.OUT_DIR}.zip"
+                    # Save the mutation information
+                    result_cov = "".join(built_result_cov)
+                    exc_type_cov = "".join(built_exc_type_cov)
+                    exc_msg_cov = "".join(built_exc_msg_cov)
+                    stacktrace_cov = "".join(built_stacktrace_cov)
+
+                    unique_mutation_idx += 1
+                    values = [
+                        self.fault_idx, unique_mutation_idx, class_name, method, line,
+                        mutator, result_cov, exc_type_cov, exc_msg_cov, stacktrace_cov,
+                        status, len(self.project_tcs_data)
+                    ]
+
+                    self.DB.insert(
+                        "d4j_mutation_info",
+                        "fault_idx, mutation_idx, class, method, line, mutator, result_transition, exception_type_transition, exception_msg_transition, stacktrace_transition, status, num_tests_run",
+                        values
+                    )
+
+        LOGGER.info(f"Save {unique_mutation_idx+1} mutation info for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
+
+    def zip_result_dir(self):
+        zip_file = f"{self.RESULT_DIR}.zip"
         if os.path.exists(zip_file):
             os.remove(zip_file)
-        
-        shutil.make_archive(self.OUT_DIR, 'zip', self.OUT_DIR)
-        LOGGER.info(f"Output directory {self.OUT_DIR} zipped to {zip_file}.")
 
-        shutil.rmtree(self.OUT_DIR, ignore_errors=True)
+        shutil.make_archive(self.RESULT_DIR, 'zip', self.RESULT_DIR)
+        LOGGER.info(f"Output directory {self.RESULT_DIR} zipped to {zip_file}.")
+
+        shutil.rmtree(self.RESULT_DIR, ignore_errors=True)

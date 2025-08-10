@@ -181,7 +181,7 @@ class ExtractorEngine:
             execute_command(command, server)
 
         def save_results(server, pid, bid, el):
-            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-report/saver-exec.log 2>&1"
+            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-results/saver-exec.log 2>&1"
             execute_command(command, server)
 
         # 2. Run run_pit.sh <PID> <BID> <parallel>
