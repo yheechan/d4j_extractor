@@ -122,6 +122,14 @@ class SaverEngine:
 
     
         LOGGER.info(f"Save {unique_line_idx+1} lines for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
+    
+    def update_line_cov_bit_sequence(self, built_bit_sequence, src_bit_seq, classLineInfo_data):
+        for line_info, line_data in self.lineInfo2lineIdx.items():
+            if line_info in classLineInfo_data:
+                src_line_idx = int(classLineInfo_data[line_info]["line_idx"])
+                dest_line_idx = line_data["line_idx"]
+                if src_bit_seq[src_line_idx] == "1":
+                    built_bit_sequence[dest_line_idx] = "1"
 
     def save_tc_info(self):
         unique_tc_idx = -1
@@ -150,7 +158,7 @@ class SaverEngine:
                     execution_time_ms = tc_data["test_info"]["execution_time_ms"]
 
                     bit_sequence_length = tc_data["coverage"]["bit_sequence_length"]
-                    line_coverage_bit_sequence = tc_data["coverage"]["line_coverage_bit_sequence"]
+                    dest_line_bit_seq = tc_data["coverage"]["line_coverage_bit_sequence"]
 
                     exception_type = tc_data["exception"]["type"]
                     exception_msg = tc_data["exception"]["message"]
@@ -161,53 +169,54 @@ class SaverEngine:
                         self.class2tcsInfo[target_class][test_name] = {
                             "tc_idx": tc_idx,
                             "result": result,
-                            "execution_time_ms": execution_time_ms,
-                            "bit_sequence_length": bit_sequence_length,
-                            "line_coverage_bit_sequence": line_coverage_bit_sequence,
-                            "exception_type": exception_type,
-                            "exception_msg": exception_msg,
-                            "stacktrace": stacktrace
                         }
-                    
+
                     # Save the unique test case data
                     if test_name not in self.project_tcs_data:
                         unique_tc_idx += 1
+                        built_bit_sequence_list = ["0"] * len(self.lineInfo2lineIdx)  # Initialize with zeros
+                        self.update_line_cov_bit_sequence(
+                            built_bit_sequence_list, dest_line_bit_seq, self.class2lineInfo[target_class]
+                        )
                         self.project_tcs_data[test_name] = {
                             "tc_idx": unique_tc_idx,
                             "result": result,
                             "execution_time_ms": execution_time_ms,
-                            "bit_sequence_length": bit_sequence_length,
-                            "line_coverage_bit_sequence": line_coverage_bit_sequence,
+                            "bit_sequence_length": len(built_bit_sequence_list),
+                            "line_coverage_bit_sequence": built_bit_sequence_list,
                             "exception_type": exception_type,
                             "exception_msg": exception_msg,
                             "stacktrace": stacktrace
                         }
-                        values = [
-                            self.fault_idx, unique_tc_idx, test_name, result,
-                            execution_time_ms, bit_sequence_length,
-                            line_coverage_bit_sequence, exception_type,
-                            exception_msg, stacktrace
-                        ]
-                        # self.DB.insert(
-                        #     "d4j_tc_info",
-                        #     "fault_idx, tc_idx, test_name, result, execution_time_ms, bit_sequence_length, line_coverage_bit_sequence, exception_type, exception_msg, stacktrace",
-                        #     values
-                        # )
                         if result == 1:
                             failing_tcs_count += 1
                         else:
                             passing_tcs_count += 1
-                    elif test_name in self.project_tcs_data and execution_time_ms > self.project_tcs_data[test_name]["execution_time_ms"]:
-                        # Update the existing test case data with the new one if it has a longer execution time
-                        self.project_tcs_data[test_name]["execution_time_ms"] = execution_time_ms
-                        # self.DB.update(
-                        #     "d4j_tc_info",
-                        #     set_values={"execution_time_ms": execution_time_ms},
-                        #     conditions={
-                        #         "fault_idx": self.fault_idx,
-                        #         "tc_idx": self.project_tcs_data[test_name]["tc_idx"]
-                        #     }
-                        # )
+                    elif test_name in self.project_tcs_data:
+                        if execution_time_ms > self.project_tcs_data[test_name]["execution_time_ms"]:
+                            # Update the existing test case data with the new one if it has a longer execution time
+                            self.project_tcs_data[test_name]["execution_time_ms"] = execution_time_ms
+                        self.update_cov_bit_sequence(
+                            self.project_tcs_data[test_name]["line_coverage_bit_sequence"],
+                            dest_line_bit_seq,
+                            self.class2lineInfo[target_class]
+                        )
+
+        # Save the test case information to the database
+        for test_name, tc_data in self.project_tcs_data.items():
+            cov_bit_seq = "".join(tc_data["line_coverage_bit_sequence"])
+            values = [
+                self.fault_idx, tc_data["tc_idx"], test_name, tc_data["result"],
+                tc_data["execution_time_ms"], tc_data["bit_sequence_length"],
+                cov_bit_seq, tc_data["exception_type"], tc_data["exception_msg"],
+                tc_data["stacktrace"]
+            ]
+            LOGGER.debug(f"{test_name} - {tc_data['tc_idx']} - {tc_data['result']} - {tc_data['bit_sequence_length']}\n\t{cov_bit_seq}")
+            # self.DB.insert(
+            #     "d4j_tc_info",
+            #     "fault_idx, tc_idx, test_name, result, execution_time_ms, bit_sequence_length, line_coverage_bit_sequence, exception_type, exception_msg, stacktrace",
+            #     values
+            # )
 
         LOGGER.info(f"Save {unique_tc_idx+1} tcs information for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
         LOGGER.info(f"Total failing tcs: {failing_tcs_count}, passing tcs: {passing_tcs_count} for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
