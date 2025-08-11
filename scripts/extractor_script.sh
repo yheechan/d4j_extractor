@@ -19,4 +19,5 @@ cd ../
 # time python3 main.py -pid Chart -e -p 2 -el attempt_1 -d > ./log/Chart/Chart_attempt_1.log 2>&1
 
 mkdir -p ./log/Closure
-time python3 main.py -pid Closure -e -p 8 -el attempt_1 -d > ./log/Closure/Closure_attempt_1.log 2>&1
+time python3 main.py -pid Closure -e -p 16 -el attempt_1 -d > ./log/Closure/Closure_attempt_1.log 2>&1
+
