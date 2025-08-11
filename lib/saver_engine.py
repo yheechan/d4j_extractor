@@ -261,16 +261,16 @@ class SaverEngine:
                     built_exc_msg_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
                     built_stacktrace_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
                     self.update_mut_cov_bit_sequence(
-                        built_result_cov, result_transition, self.class2lineInfo[target_class]
+                        built_result_cov, result_transition, self.class2tcsInfo[target_class]
                     )
                     self.update_mut_cov_bit_sequence(
-                        built_exc_type_cov, exception_type_transition, self.class2lineInfo[target_class]
+                        built_exc_type_cov, exception_type_transition, self.class2tcsInfo[target_class]
                     )
                     self.update_mut_cov_bit_sequence(
-                        built_exc_msg_cov, exception_msg_transition, self.class2lineInfo[target_class]
+                        built_exc_msg_cov, exception_msg_transition, self.class2tcsInfo[target_class]
                     )
                     self.update_mut_cov_bit_sequence(
-                        built_stacktrace_cov, stacktrace_transition, self.class2lineInfo[target_class]
+                        built_stacktrace_cov, stacktrace_transition, self.class2tcsInfo[target_class]
                     )
 
                     # Save the mutation information
@@ -291,7 +291,6 @@ class SaverEngine:
                         "fault_idx, mutation_idx, class, method, line, mutator, result_transition, exception_type_transition, exception_msg_transition, stacktrace_transition, status, num_tests_run",
                         values
                     )
-
         LOGGER.info(f"Save {unique_mutation_idx+1} mutation info for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
 
     def zip_result_dir(self):
