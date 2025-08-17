@@ -1,4 +1,4 @@
-import subprocess as sp
+import numpy as np
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -44,3 +44,69 @@ def get_active_bugs_list(subject, D4J_HOME):
     except Exception as e:
         LOGGER.error(f"Failed to read active bugs for subject {subject}: {e}")
         return []
+
+def getLinesExecutedByFailTcs(baseline_results):
+    # get lines executed by all failing tcs
+    linesExecutedByFailTcsBitVal = 0
+    for failIdx in baseline_results["tcsResults"]["fail"]:
+        tcInfo = baseline_results["tcIdx2tcInfo"][failIdx]
+        covBitVal = tcInfo["covBitVal"]
+        linesExecutedByFailTcsBitVal |= covBitVal
+
+    return linesExecutedByFailTcsBitVal
+
+def get_relevant_tests(baseline_results, linesExecutedByFailTcsBitVal):
+    # get relevant tests
+    relevant_tests = {}
+    for tcIdx, tcInfo in baseline_results["tcIdx2tcInfo"].items():
+        tcCovBitVal = tcInfo["covBitVal"]
+        if linesExecutedByFailTcsBitVal & tcCovBitVal:
+            relevant_tests[tcIdx] = tcInfo
+    return relevant_tests
+
+def get_relevant_lines(baseline_results, linesExecutedByFailTcsBitVal):
+    # get relevant lines
+    bitSeqStr = format(
+        linesExecutedByFailTcsBitVal,
+        f'0{len(baseline_results["lineIdx2lineInfo"])}b'
+    )
+
+    relevant_lines = {}
+    for lineIdx, lineInfo in baseline_results["lineIdx2lineInfo"].items():
+        if bitSeqStr[lineIdx] == '1':
+            relevant_lines[lineIdx] = lineInfo
+
+    return relevant_lines
+
+def set_relevant_line_cov_bit(relevant_tests, relevant_lines, baseline_results):
+    for tcIdx, tcInfo in relevant_tests.items():
+        tcCovBitVal = tcInfo["covBitVal"]
+
+        fullCovBitSeqStr = format(
+            tcCovBitVal,
+            f'0{len(baseline_results["lineIdx2lineInfo"])}b'
+        )
+        relCovBitSeqStr = ""
+
+        for lineIdx, lineInfo in relevant_lines.items():
+            relCovBitSeqStr += fullCovBitSeqStr[lineIdx]
+        
+        tcInfo["relCovBitVal"] = int(relCovBitSeqStr, 2)
+
+def reset_idx(data):
+    newData = {}
+    newIdx = -1
+    for idx, value in data.items():
+        newIdx += 1
+        newData[newIdx] = value
+    return newData
+
+def cosine_similarity(bit_sequence_1, bit_sequence_2):
+    v1 = np.array(list(bit_sequence_1)).astype(float)
+    v2 = np.array(list(bit_sequence_2)).astype(float)
+    if np.linalg.norm(v1) == 0 or np.linalg.norm(v2) == 0:
+        return 0.0
+    dot_product = np.dot(v1, v2)
+    magnitude_v1 = np.linalg.norm(v1)
+    magnitude_v2 = np.linalg.norm(v2)
+    return (dot_product / (magnitude_v1 * magnitude_v2)).item()

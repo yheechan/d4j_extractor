@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from lib.extractor_engine import ExtractorEngine
+from lib.mutation_testing_engine import MutationTestingEngine
 from lib.saver_engine import SaverEngine
 from lib.constructor_engine import ConstructorEngine
 from lib.postprocessor_engine import PostProcessorEngine
@@ -21,6 +22,10 @@ def make_parser():
     # Arguments for ExtractorEngine
     parser.add_argument("-e", "--extractor", action="store_true", help="Run the extractor engine")
     parser.add_argument("-p", "--parallel", type=int, default=10, help="Number of parallel processes to run")
+    parser.add_argument("-wmc", "--with-mutation-coverage", action="store_true", help="Enable mutation coverage")
+
+    # Arguments for MutationTestingEngine
+    parser.add_argument("-mt", "--mutation-testing", action="store_true", help="Run the mutation testing engine")
 
     # Arguments for SaverEngine
     parser.add_argument("-sr", "--save-results", action="store_true", help="Save the extracted data to db")
@@ -63,10 +68,18 @@ def main():
         if not args.project_id:
             logging.error("Project ID is required when running the extractor.")
             return
-        extractor_engine = ExtractorEngine(args.project_id, args.parallel, args.experiment_label)
+        extractor_engine = ExtractorEngine(args.project_id, args.parallel, args.experiment_label, args.with_mutation_coverage)
         function_name = "ExtractorEngine"
-        slack.send_message(f"Starting {function_name} for project {args.project_id} with parallel={args.parallel}.")
+        slack.send_message(f"Starting {function_name} for project {args.project_id} with parallel={args.parallel} with_mutation_coverage={args.with_mutation_coverage}.")
         extractor_engine.run()
+    elif args.mutation_testing:
+        if not args.project_id:
+            logging.error("Project ID is required when running the mutation testing.")
+            return
+        mutation_testing_engine = MutationTestingEngine(args.project_id, args.bug_id, args.experiment_label, args.parallel)
+        function_name = "MutationTestingEngine"
+        slack.send_message(f"Starting {function_name} for project {args.project_id} and bug {args.bug_id} with parallel={args.parallel}.")
+        mutation_testing_engine.run()
     elif args.save_results:
         if not args.project_id:
             logging.error("Project ID is required when saving results.")

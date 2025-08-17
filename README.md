@@ -27,3 +27,13 @@ python3 run_pit_all.py --pid <pid> --bid <bid> --num-threads <num-threads>
 cd ../
 python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v
 ```
+
+
+```
+python3 main.py -pid Lang -bid 1 -el attempt_2 -p 8 --mutation-testing -d
+```
+
+
+```
+python3 main.py -pid Lang -bid 1 -el attempt_2 --save-results -d
+```

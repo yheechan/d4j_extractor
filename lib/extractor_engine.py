@@ -14,10 +14,11 @@ from dotenv import load_dotenv
 LOGGER = logging.getLogger(__name__)
 
 class ExtractorEngine:
-    def __init__(self, pid, parallel=10, experiment_label=None):
+    def __init__(self, pid, parallel=10, experiment_label=None, with_mutation_coverage=False):
         self.PID = pid
-        self.parallel = parallel
+        self.PARALLEL = parallel
         self.EL = experiment_label
+        self.WITH_MUTATION_COVERAGE = with_mutation_coverage
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -42,7 +43,7 @@ class ExtractorEngine:
         self.BID_LIST = get_active_bugs_list(self.PID, self.os_copy.get("D4J_HOME"))
 
         self.REMOTE_D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
-        self.REMOTE_WORK_DIR = f"{self.REMOTE_D4J_DIR}{self.PID}"
+        self.REMOTE_WORK_DIR = f"{self.REMOTE_D4J_DIR}{self.EL}/{self.PID}"
 
     def run(self):
         self.prepare_for_testing()
@@ -55,21 +56,34 @@ class ExtractorEngine:
 
             scripts_dir = self.REMOTE_D4J_DIR + "scripts/"
 
-            # 1. send compile2prepare.sh
+            # send compile2prepare.sh
             send_file(self.SCRIPTS_DIR + "/compile2prepare.sh", scripts_dir, server)
             chmod_file(scripts_dir + "compile2prepare.sh", "777", server)
 
-            # 2. send measureExpectedTime.py and perFile_expected_time.sh
-            send_file(self.SCRIPTS_DIR + "/measureExpectedTime.py", scripts_dir, server)
-            send_file(self.SCRIPTS_DIR + "/perFile_expected_time.sh", scripts_dir, server)
-            chmod_file(scripts_dir + "perFile_expected_time.sh", "777", server)
+            if self.WITH_MUTATION_COVERAGE:
+                # send run_pit.sh
+                send_file(self.SCRIPT_DIR + "/run_pit.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "run_pit.sh", "777", server)
 
-            # 3. send run_pit_all.py and perFile_pit.sh
-            send_file(self.SCRIPTS_DIR + "/run_pit_all.py", scripts_dir, server)
-            send_file(self.SCRIPTS_DIR + "/perFile_pit.sh", scripts_dir, server)
-            chmod_file(scripts_dir + "perFile_pit.sh", "777", server)
+                # send list_methods.sh
+                send_file(self.SCRIPTS_DIR + "/list_methods.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "list_methods.sh", "777", server)
 
-            # 4. send main.py
+                # send instrument.sh
+                send_file(self.SCRIPTS_DIR + "/instrument.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "instrument.sh", "777", server)
+            else:
+                # send measureExpectedTime.py and perFile_expected_time.sh
+                send_file(self.SCRIPTS_DIR + "/measureExpectedTime.py", scripts_dir, server)
+                send_file(self.SCRIPTS_DIR + "/perFile_expected_time.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "perFile_expected_time.sh", "777", server)
+
+                # send run_pit_all.py and perFile_pit.sh
+                send_file(self.SCRIPTS_DIR + "/run_pit_all.py", scripts_dir, server)
+                send_file(self.SCRIPTS_DIR + "/perFile_pit.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "perFile_pit.sh", "777", server)
+
+            # send main.py
             send_directory(self.LIB_DIR, self.REMOTE_D4J_DIR, server)
             send_directory(self.UTILS_DIR, self.REMOTE_D4J_DIR, server)
             send_file(self.MAIN_SCRIPT, self.REMOTE_D4J_DIR, server)
@@ -99,7 +113,10 @@ class ExtractorEngine:
 
                     "bit_sequence_length INT",
                     "line_coverage_bit_sequence TEXT",
-                    
+
+                    "full_bit_sequence_length INT",
+                    "full_line_coverage_bit_sequence TEXT",
+
                     "exception_type TEXT",
                     "exception_msg TEXT",
                     "stacktrace TEXT",
@@ -113,7 +130,7 @@ class ExtractorEngine:
                     "idx_d4j_tc_info_fault_idx",
                     "fault_idx"
                 )
-            
+
             if not self.DB.table_exists("d4j_line_info"):
                 columns = [
                     "fault_idx INT NOT NULL", # -- Foreign key to d4j_fault_info(fault_idx)
@@ -140,12 +157,20 @@ class ExtractorEngine:
                     "method TEXT",
                     "line INT",
                     "mutator TEXT",
+                    
                     "result_transition TEXT",
                     "exception_type_transition TEXT",
                     "exception_msg_transition TEXT",
                     "stacktrace_transition TEXT",
+                    
                     "status TEXT",
                     "num_tests_run INT",
+
+                    "f2p_cov_sim REAL[]",
+                    "p2f_cov_sim REAL[]",
+                    "f2f_cov_sim REAL[]",
+                    "p2p_cov_sim REAL[]",
+
                     "FOREIGN KEY (fault_idx) REFERENCES d4j_fault_info(fault_idx) ON DELETE CASCADE ON UPDATE CASCADE", # -- Automatically delete mutation_info rows when bug_info is deleted, Update changes in bug_info to mutation_info
                 ]
                 col_str = ", ".join(columns)
@@ -178,15 +203,23 @@ class ExtractorEngine:
             command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
             execute_command(command, server)
         
-        def measure_expected_time(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
-            execute_command(command, server)
-        
-        def run_pit(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.parallel}"
+        def generate_mutants(server, pid, bid):
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash run_pit.sh {pid} {bid} {self.PARALLEL}"
             execute_command(command, server)
 
-        def save_results(server, pid, bid, el):
+        def conduct_mutation_testing(server, pid, bid):
+            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {self.EL} -p {self.PARALLEL} --mutation-testing -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/mutation-testing-exec.log 2>&1"
+            execute_command(command, server)
+
+        def measure_expected_time(server, pid, bid): # DEPRECATED
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.PARALLEL}"
+            execute_command(command, server)
+        
+        def run_pit(server, pid, bid): # DEPRECATED
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.PARALLEL}"
+            execute_command(command, server)
+
+        def save_results(server, pid, bid, el): 
             command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/saver-exec.log 2>&1"
             execute_command(command, server)
 
@@ -204,8 +237,12 @@ class ExtractorEngine:
                     try:
                         prepare_dir(server, self.PID, bug_id)
                         compile2prepare(server, self.PID, bug_id)
-                        measure_expected_time(server, self.PID, bug_id)
-                        run_pit(server, self.PID, bug_id)
+                        if self.WITH_MUTATION_COVERAGE:
+                            generate_mutants(server, self.PID, bug_id)
+                            conduct_mutation_testing(server, self.PID, bug_id)
+                        else:
+                            measure_expected_time(server, self.PID, bug_id)
+                            run_pit(server, self.PID, bug_id)
                         save_results(server, self.PID, bug_id, self.EL)
                         LOGGER.info(f"Server {server} completed work on bug {bug_id}")
                     except Exception as e:

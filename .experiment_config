@@ -2,6 +2,6 @@
     "num_repeats": 10,
     "line_selection_formula": "ochiai",
     "target_lines": [70],
-    "mutation_cnt": [5],
+    "mutation_cnt": [7],
     "tcs_reduction": "Reduced"
 }

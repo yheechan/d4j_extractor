@@ -1,4 +1,6 @@
 from lib.database import CRUD
+from utils.data_read_utils import *
+from utils.general_utils import *
 
 import csv
 import json
@@ -28,26 +30,32 @@ class SaverEngine:
         )
 
         self.D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
-        self.WORK_DIR = f"{self.D4J_DIR}{self.PID}"
-        self.RESULT_DIR = f"{self.D4J_DIR}{self.PID}/out_dir/{self.PID}-{self.BID}b-result"
-
-        self.PERFILEREPORT_DIR = f"{self.RESULT_DIR}/perFileReport"
-        self.SUBJECTINFO_DIR = f"{self.RESULT_DIR}/subjectInfo"
+        self.WORK_DIR = f"{self.D4J_DIR}{self.EL}/{self.PID}"
+        self.RESULT_DIR = f"{self.WORK_DIR}/out_dir/{self.PID}-{self.BID}b-result"
 
     def run(self):
-        self.USING_CLASSES = self.get_using_classes()
-        self.save_fault()
-        self.save_line_info()
-        self.save_tc_info()
-        self.save_mutation_info()
+        self.fault_idx = self.save_fault()
+
+        self.tcName2tcIdx = self.getTcName2tcIdx()
+        baseline_results = self.get_results("baseline")
+        linesExecutedByFailTcsBitVal = getLinesExecutedByFailTcs(baseline_results)
+        relevant_tests = get_relevant_tests(baseline_results, linesExecutedByFailTcsBitVal)
+        relevant_lines = get_relevant_lines(baseline_results, linesExecutedByFailTcsBitVal)
+        set_relevant_line_cov_bit(relevant_tests, relevant_lines, baseline_results)
+
+        self.save_line_info(relevant_lines)
+        self.save_tc_info(
+            relevant_tests,
+            len(baseline_results["lineIdx2lineInfo"]),
+            len(relevant_lines)
+        )
+
+
+        mutantIdx2mutantInfo = self.get_mutants()
+        self.process_mutant_results(relevant_tests, mutantIdx2mutantInfo, len(baseline_results["lineIdx2lineInfo"]))
+        self.save_mutation_info(mutantIdx2mutantInfo)
         self.zip_result_dir()
     
-    def get_using_classes(self):
-        using_src_classes_txt = os.path.join(self.SUBJECTINFO_DIR, "using_src_classes.txt")
-        with open(using_src_classes_txt, "r") as f:
-            using_src_classes = f.read().strip().split(",")
-        return [src_class.strip() for src_class in using_src_classes]
-
     def save_fault(self):
         values = [self.PID, self.BID, self.EL]
         self.DB.insert(
@@ -56,7 +64,7 @@ class SaverEngine:
             values
         )
 
-        self.fault_idx = self.DB.read(
+        fault_idx = self.DB.read(
             "d4j_fault_info",
             columns="fault_idx",
             conditions={
@@ -66,65 +74,64 @@ class SaverEngine:
             }
         )
 
-        if not self.fault_idx:
+        if not fault_idx:
             LOGGER.error(f"Failed to retrieve fault index for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
             return
-        self.fault_idx = self.fault_idx[0][0]
-        LOGGER.info(f"Fault information saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL} with fault index {self.fault_idx}.")
+        LOGGER.info(f"Fault information saved for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL} with fault index {fault_idx[0][0]}.")
+        return fault_idx[0][0]
+    
+    def getTcName2tcIdx(self):
+        relevant_tests_txt = os.path.join(self.RESULT_DIR, "subjectInfo/relevant_tests.txt")
+        tcName2tcIdx = {}
+        tcIdx = -1
+        with open(relevant_tests_txt, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                tcType, tcName = line.strip().split(",")
+                assert tcName not in tcName2tcIdx
+                tcIdx += 1
+                tcName2tcIdx[tcName] = int(tcIdx)
+        return tcName2tcIdx
 
-    def save_line_info(self):
+    def get_results(self, work_name):
+        LOGGER.debug(f"Getting results for work name: {work_name}")
+        # Get the results for the specified work name
+        lineIdx2lineInfo = get_line_info(os.path.join(
+            self.RESULT_DIR, f"coverage_results/{work_name}/sfl/txt/spectra.csv"
+        ))
+
+        tcIdx2tcInfo, tcsResults = get_test_info(os.path.join(
+            self.RESULT_DIR, f"coverage_results/{work_name}/sfl/txt/tests.csv"
+        ))
+
+        get_test_cov(os.path.join(
+            self.RESULT_DIR, f"coverage_results/{work_name}/sfl/txt/matrix.txt"
+        ), tcIdx2tcInfo)
+
+        return {
+            "lineIdx2lineInfo": lineIdx2lineInfo,
+            "tcIdx2tcInfo": tcIdx2tcInfo,
+            "tcsResults": tcsResults
+        }
+
+    def save_line_info(self, relevant_lines):
         unique_line_idx = -1
-        self.lineInfo2lineIdx = {}
-        self.class2lineInfo = {}
 
-        for target_class in self.USING_CLASSES:
-            if target_class not in self.class2lineInfo:
-                self.class2lineInfo[target_class] = {}
+        for lineIdx, lineInfo in relevant_lines.items():
+            unique_line_idx += 1
+            className = lineInfo["className"]
+            methodName = lineInfo["methodName"]
+            lineNum = lineInfo["lineNum"]
+            fileName = className.replace(".", "/") + ".java"
 
-            line_info_csv = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "line_info.csv")
-            with open(line_info_csv, 'r') as csvfile:
-                reader = csv.reader(csvfile)
-                # skip the header
-                next(reader, None)
-                for row in reader:
-                    # Assuming the CSV has columns: 'line_idx', 'file', 'line_info'
-                    line_id = row[0]
-                    code_filename = row[1]
-                    line_info = row[2]
-                    class_name = line_info.split("#")[0]
-                    method_name = line_info.split("#")[1].split(":")[0]
-                    line_num = line_info.split("#")[1].split(":")[1]
-
-                    self.class2lineInfo[target_class][line_info] = {
-                        "line_idx": line_id,
-                        "file": code_filename,
-                        "class": class_name,
-                        "method": method_name,
-                        "line_num": line_num
-                    }
-
-                    # save project_line_data for unique lines for DB
-                    if line_info not in self.lineInfo2lineIdx:
-                        unique_line_idx += 1
-                        # Store the line information to LINEINFO2LINEIDX
-                        self.lineInfo2lineIdx[line_info] = {
-                            "line_idx": unique_line_idx,
-                            "file": code_filename,
-                            "class": class_name,
-                            "method": method_name,
-                            "line_num": line_num
-                        }
-
-                        # Save the line information to DB
-                        values = [
-                            self.fault_idx, unique_line_idx, code_filename, class_name, method_name, line_num
-                        ]
-                        self.DB.insert(
-                            "d4j_line_info",
-                            "fault_idx, line_idx, file, class, method, line_num",
-                            values
-                        )
-
+            values = [
+                self.fault_idx, unique_line_idx, fileName, className, methodName, lineNum
+            ]
+            self.DB.insert(
+                "d4j_line_info",
+                "fault_idx, line_idx, file, class, method, line_num",
+                values
+            )
     
         LOGGER.info(f"Save {unique_line_idx+1} lines for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
     
@@ -136,161 +143,252 @@ class SaverEngine:
                 if src_bit_seq[src_line_idx] == "1":
                     built_bit_sequence[dest_line_idx] = "1"
 
-    def save_tc_info(self):
+    def save_tc_info(self, relevant_tests, fullCovLen, relCovLen):
         unique_tc_idx = -1
-        self.project_tcs_data = {}
-        self.class2tcsInfo = {}
         failing_tcs_count = 0
         passing_tcs_count = 0
 
-        for target_class in self.USING_CLASSES:
-            if target_class not in self.class2tcsInfo:
-                self.class2tcsInfo[target_class] = {}
+        for tcIdx, tcInfo in relevant_tests.items():
+            unique_tc_idx += 1
+            className = tcInfo["className"]
+            methodName = tcInfo["methodName"]
+            result = tcInfo["result"]
+            duration_ms = tcInfo["duration_ms"]
+            exception_type = tcInfo["exception_type"]
+            exception_msg = tcInfo["exception_msg"]
+            stacktrace = tcInfo["stacktrace"]
+            fullCovBitVal = tcInfo["covBitVal"]
+            fullCovBitStr = format(fullCovBitVal, f'0{fullCovLen}b')
+            relCovBitVal = tcInfo["relCovBitVal"]
+            relCovBitStr = format(relCovBitVal, f'0{relCovLen}b')
+            testName = className + "." + methodName + "()"
 
-            baseline_test_results_dir = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "baselineTestResults")
-            for result_file in os.listdir(baseline_test_results_dir):
-                if not result_file.endswith(".json"):
-                    continue
-                result_path = os.path.join(baseline_test_results_dir, result_file)
-                with open(result_path, 'r') as f:
-                    tc_data = json.load(f)
-
-                    # Get the test case information
-                    tc_idx = tc_data["test_info"]["test_id"]
-                    test_name = tc_data["test_info"]["test_name"]
-                    result = 1 if tc_data["test_info"]["result"] == "FAIL" else 0
-                    execution_time_ms = tc_data["test_info"]["execution_time_ms"]
-
-                    bit_sequence_length = tc_data["coverage"]["bit_sequence_length"]
-                    dest_line_bit_seq = tc_data["coverage"]["line_coverage_bit_sequence"]
-
-                    exception_type = tc_data["exception"]["type"]
-                    exception_msg = tc_data["exception"]["message"]
-                    stacktrace = tc_data["exception"]["stack_trace"]
-
-                    # Store the test case information in class2tcsInfo
-                    if test_name not in self.class2tcsInfo[target_class]:
-                        self.class2tcsInfo[target_class][test_name] = {
-                            "tc_idx": tc_idx,
-                            "result": result,
-                        }
-
-                    # Save the unique test case data
-                    if test_name not in self.project_tcs_data:
-                        unique_tc_idx += 1
-                        built_bit_sequence_list = ["0"] * len(self.lineInfo2lineIdx)  # Initialize with zeros
-                        self.update_line_cov_bit_sequence(
-                            built_bit_sequence_list, dest_line_bit_seq, self.class2lineInfo[target_class]
-                        )
-                        self.project_tcs_data[test_name] = {
-                            "tc_idx": unique_tc_idx,
-                            "result": result,
-                            "execution_time_ms": execution_time_ms,
-                            "bit_sequence_length": len(built_bit_sequence_list),
-                            "line_coverage_bit_sequence": built_bit_sequence_list,
-                            "exception_type": exception_type,
-                            "exception_msg": exception_msg,
-                            "stacktrace": stacktrace
-                        }
-                        if result == 1:
-                            failing_tcs_count += 1
-                        else:
-                            passing_tcs_count += 1
-                    elif test_name in self.project_tcs_data:
-                        if execution_time_ms > self.project_tcs_data[test_name]["execution_time_ms"]:
-                            # Update the existing test case data with the new one if it has a longer execution time
-                            self.project_tcs_data[test_name]["execution_time_ms"] = execution_time_ms
-                        self.update_line_cov_bit_sequence(
-                            self.project_tcs_data[test_name]["line_coverage_bit_sequence"],
-                            dest_line_bit_seq,
-                            self.class2lineInfo[target_class]
-                        )
-
-        # Save the test case information to the database
-        for test_name, tc_data in self.project_tcs_data.items():
-            cov_bit_seq = "".join(tc_data["line_coverage_bit_sequence"])
             values = [
-                self.fault_idx, tc_data["tc_idx"], test_name, tc_data["result"],
-                tc_data["execution_time_ms"], tc_data["bit_sequence_length"],
-                cov_bit_seq, tc_data["exception_type"], tc_data["exception_msg"],
-                tc_data["stacktrace"]
+                self.fault_idx, unique_tc_idx, testName, result, duration_ms,
+                len(relCovBitStr), relCovBitStr, len(fullCovBitStr), fullCovBitStr,
+                exception_type, exception_msg, stacktrace
             ]
-            LOGGER.debug(f"{test_name} - {tc_data['tc_idx']} - {tc_data['result']} - {tc_data['bit_sequence_length']}\n\t{cov_bit_seq}")
+            columns = [
+                "fault_idx", "tc_idx", "test_name", "result", "execution_time_ms",
+                "bit_sequence_length", "line_coverage_bit_sequence",
+                "full_bit_sequence_length", "full_line_coverage_bit_sequence",
+                "exception_type", "exception_msg", "stacktrace"
+            ]
+            col_str = ", ".join(columns)
             self.DB.insert(
                 "d4j_tc_info",
-                "fault_idx, tc_idx, test_name, result, execution_time_ms, bit_sequence_length, line_coverage_bit_sequence, exception_type, exception_msg, stacktrace",
+                col_str,
                 values
             )
+
+            if result == 1:
+                failing_tcs_count += 1
+            else:
+                passing_tcs_count += 1
 
         LOGGER.info(f"Save {unique_tc_idx+1} tcs information for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
         LOGGER.info(f"Total failing tcs: {failing_tcs_count}, passing tcs: {passing_tcs_count} for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
 
-    def update_mut_cov_bit_sequence(self, built_bit_sequence, src_bit_seq, classTcsInfo_data):
-        for tc_name, tc_data in self.project_tcs_data.items():
-            if tc_name in classTcsInfo_data:
-                src_tc_idx = int(classTcsInfo_data[tc_name]["tc_idx"])
-                dest_tc_idx = tc_data["tc_idx"]
-                if src_bit_seq[src_tc_idx] == "1":
-                    built_bit_sequence[dest_tc_idx] = "1"
+    def get_mutants(self):
+        mutants_dir = os.path.join(self.RESULT_DIR, "pit-results/mutants")
+        # traverse through mutant files
+        # there are trees of directories
+        mutantIdx2mutantInfo = {}
+        for root, dirs, files in os.walk(mutants_dir):
+            for filename in files:
+                if filename.endswith(".class"):
+                    # get absolute filepath to file
+                    mutantIdx = int(filename.strip().split("_")[0])
+                    classFilePath = os.path.join(root, filename)
+                    infoFilePath = os.path.join(root, filename.replace(".class", ".info"))
+                    mutantInfo = get_mutant_info(infoFilePath)
+                    mutantInfo["classFilePath"] = classFilePath
+                    mutantIdx2mutantInfo[mutantIdx] = mutantInfo
+        return mutantIdx2mutantInfo
 
-    def save_mutation_info(self):
+    def process_mutant_results(self, relevant_tests, mutantIdx2mutantInfo, num_lines):
+        coverage_results_dir = os.path.join(self.RESULT_DIR, "coverage_results")
+        
+        # Initialize all mutants with default transition results in case they don't have coverage data
+        num_tests = len(self.tcName2tcIdx)
+        default_bit_sequence = "0" * num_tests
+        
+        for mutantIdx in mutantIdx2mutantInfo:
+            if "result_transition" not in mutantIdx2mutantInfo[mutantIdx]:
+                mutantIdx2mutantInfo[mutantIdx].update({
+                    "result_transition": default_bit_sequence,
+                    "exception_type_transition": default_bit_sequence,
+                    "exception_msg_transition": default_bit_sequence,
+                    "stacktrace_transition": default_bit_sequence,
+                    "f2p_cov_sim": [1.0] * num_tests,
+                    "p2f_cov_sim": [1.0] * num_tests,
+                    "f2f_cov_sim": [1.0] * num_tests,
+                    "p2p_cov_sim": [1.0] * num_tests,
+                })
+        
+        for dirName in os.listdir(coverage_results_dir):
+            if not dirName.startswith("mutant"):
+                continue
+
+            mutantIdx = int(dirName.split("_")[-1])
+            
+            # Skip if this mutant is not in our expected list
+            if mutantIdx not in mutantIdx2mutantInfo:
+                LOGGER.warning(f"Found results for mutant {mutantIdx} but no mutant info available")
+                continue
+
+            try:
+                mutantResults = self.get_results(dirName)
+                
+                # Check if we got valid results
+                if not mutantResults["tcIdx2tcInfo"]:
+                    LOGGER.warning(f"No test results found for mutant {mutantIdx}, skipping")
+                    continue
+                    
+            except Exception as e:
+                LOGGER.error(f"Failed to get results for mutant {mutantIdx}: {e}")
+                continue
+
+            transition_results = {
+                "result_transition": "",
+                "exception_type_transition": "",
+                "exception_msg_transition": "",
+                "stacktrace_transition": "",
+                "f2p_cov_sim": [],
+                "p2f_cov_sim": [],
+                "f2f_cov_sim": [],
+                "p2p_cov_sim": [],
+            }
+
+            reversedMutantTcName2TcIdxInfo = {
+                f"{tcInfo['className']}#{tcInfo['methodName']}": {
+                    "tcIdx": tcIdx,
+                    "className": tcInfo["className"],
+                    "methodName": tcInfo["methodName"],
+                    "result": tcInfo["result"],
+                    "exception_type": tcInfo["exception_type"],
+                    "exception_msg": tcInfo["exception_msg"],
+                    "stacktrace": tcInfo["stacktrace"],
+                    "covBitVal": tcInfo["covBitVal"]
+                } for tcIdx, tcInfo in mutantResults["tcIdx2tcInfo"].items()
+            }
+            reversedRelevantTcName2tcIdxInfo = {
+                f"{tcInfo['className']}#{tcInfo['methodName']}": {
+                    "tcIdx": tcIdx,
+                    "className": tcInfo["className"],
+                    "methodName": tcInfo["methodName"],
+                    "result": tcInfo["result"],
+                    "exception_type": tcInfo["exception_type"],
+                    "exception_msg": tcInfo["exception_msg"],
+                    "stacktrace": tcInfo["stacktrace"],
+                    "covBitVal": tcInfo["covBitVal"]
+                } for tcIdx, tcInfo in relevant_tests.items()
+            }
+            for classNameSharpMethodName, tcIdx in self.tcName2tcIdx.items():
+                if classNameSharpMethodName not in reversedRelevantTcName2tcIdxInfo:
+                    LOGGER.error(f"Test case {classNameSharpMethodName} not found in relevant tests for mutant {mutantIdx}.")
+                    raise ValueError(f"Test case {classNameSharpMethodName} not found in relevant tests for mutant {mutantIdx}.")
+
+                baselineTcInfo = reversedRelevantTcName2tcIdxInfo[classNameSharpMethodName]
+                if classNameSharpMethodName in reversedMutantTcName2TcIdxInfo:
+                    mutantTcInfo = reversedMutantTcName2TcIdxInfo[classNameSharpMethodName]
+                    # LOGGER.debug(f"Processing mutant {mutantIdx} for test case {tcIdx}.")
+                    # LOGGER.debug(f"Baseline TC Info: {baselineTcInfo}")
+                    # LOGGER.debug(f"Mutant TC Info: {mutantTcInfo}")
+                    assert baselineTcInfo["className"] == mutantTcInfo["className"]
+                    assert baselineTcInfo["methodName"] == mutantTcInfo["methodName"]
+
+                    resultBit = self.returnTransitionBit(baselineTcInfo["result"], mutantTcInfo["result"])
+                    exceptionTypeBit = self.returnTransitionBit(baselineTcInfo["exception_type"], mutantTcInfo["exception_type"])
+                    exceptionMsgBit = self.returnTransitionBit(baselineTcInfo["exception_msg"], mutantTcInfo["exception_msg"])
+                    stacktraceBit = self.returnTransitionBit(baselineTcInfo["stacktrace"], mutantTcInfo["stacktrace"])
+                    
+                    transition_type, cov_sim = self.returnCovSim(baselineTcInfo, mutantTcInfo, num_lines)
+                    transition_results[f"{transition_type}_cov_sim"].append(cov_sim)
+                else:
+                    resultBit = "0"
+                    exceptionTypeBit = "0"
+                    exceptionMsgBit = "0"
+                    stacktraceBit = "0"
+
+                    if baselineTcInfo["result"] == 1:
+                        transition_results["f2f_cov_sim"].append(1.0)
+                    elif baselineTcInfo["result"] == 0:
+                        transition_results["p2p_cov_sim"].append(1.0)
+
+                transition_results["result_transition"] += resultBit
+                transition_results["exception_type_transition"] += exceptionTypeBit
+                transition_results["exception_msg_transition"] += exceptionMsgBit
+                transition_results["stacktrace_transition"] += stacktraceBit
+
+            # add the processed information to mutantIdx2mutantInfo
+            mutantIdx2mutantInfo[mutantIdx].update(transition_results)
+
+            LOGGER.info(f"Processed results for mutant {mutantIdx} with {len(relevant_tests)}:{len(self.tcName2tcIdx)} relevant tests.")
+
+    def returnTransitionBit(self, baselineResult, mutantResult):
+        if baselineResult != mutantResult:
+            return "1"
+        elif baselineResult == mutantResult:
+            return "0"
+
+    def returnCovSim(self, baselineTcInfo, mutantTcInfo, num_lines):
+        baselineResult = baselineTcInfo["result"]
+        mutantResult = mutantTcInfo["result"]
+
+        baselineCovBitVal = baselineTcInfo["covBitVal"]
+        mutantCovBitVal = mutantTcInfo["covBitVal"]
+        
+        baselineCovBitStr = format(baselineCovBitVal, f'0{num_lines}b')
+        mutantCovBitStr = format(mutantCovBitVal, f'0{num_lines}b')
+
+        cosine_sim = cosine_similarity(baselineCovBitStr, mutantCovBitStr)
+        if baselineResult == 1 and mutantResult == 0:
+            return ("f2p", cosine_sim)
+        elif baselineResult == 0 and mutantResult == 1:
+            return ("p2f", cosine_sim)
+        elif baselineResult == 1 and mutantResult == 1:
+            return ("f2f", cosine_sim)
+        elif baselineResult == 0 and mutantResult == 0:
+            return ("p2p", cosine_sim)
+
+    def save_mutation_info(self, mutantIdx2mutantInfo):
         unique_mutation_idx = -1
+        for mutantIdx, mutantInfo in mutantIdx2mutantInfo.items():
+            className = mutantInfo["className"]
+            methodName = mutantInfo["methodName"]
+            lineNumber = mutantInfo["lineNumber"]
+            mutator = mutantInfo["mutator"]
+            
+            # All mutants should now have transition data (either real or default)
+            numTestsRun = len(mutantInfo["result_transition"])
+            result_transition = mutantInfo["result_transition"]
+            exception_type_transition = mutantInfo["exception_type_transition"]
+            exception_msg_transition = mutantInfo["exception_msg_transition"]
+            stacktrace_transition = mutantInfo["stacktrace_transition"]
+            f2p_cov_sim = mutantInfo["f2p_cov_sim"]
+            p2f_cov_sim = mutantInfo["p2f_cov_sim"]
+            f2f_cov_sim = mutantInfo["f2f_cov_sim"]
+            p2p_cov_sim = mutantInfo["p2p_cov_sim"]
 
-        for target_class in self.USING_CLASSES:
-            result_csv = os.path.join(self.PERFILEREPORT_DIR, f"{target_class}-report", "full_mutation_matrix.csv")
-            with open(result_csv, 'r') as csvfile:
-                reader = csv.reader(csvfile)
-                # skip the header
-                next(reader, None)
-                for row in reader:
-                    # Assuming the CSV has columns: mutant_id,class,method,line,mutator,result_transition,exception_type_transition,exception_msg_transition,stacktrace_transition,status,num_tests_run
-                    mutation_idx = row[0]
-                    class_name = row[1]
-                    method = row[2]
-                    line = row[3]
-                    mutator = row[4]
-                    result_transition = row[5]
-                    exception_type_transition = row[6]
-                    exception_msg_transition = row[7]
-                    stacktrace_transition = row[8]
-                    status = row[9]
-                    num_tests_run = row[10]
+            unique_mutation_idx += 1
+            values = [
+                self.fault_idx, unique_mutation_idx, className, methodName, lineNumber, mutator,
+                result_transition, exception_type_transition, exception_msg_transition, stacktrace_transition,
+                f2p_cov_sim, p2f_cov_sim, f2f_cov_sim, p2p_cov_sim, numTestsRun
+            ]
+            columns = [
+                "fault_idx", "mutation_idx", "class", "method", "line", "mutator",
+                "result_transition", "exception_type_transition", "exception_msg_transition", "stacktrace_transition",
+                "f2p_cov_sim", "p2f_cov_sim", "f2f_cov_sim", "p2p_cov_sim", "num_tests_run"
+            ]
+            col_str = ", ".join(columns)
+            self.DB.insert(
+                "d4j_mutation_info",
+                col_str,
+                values
+            )
 
-                    built_result_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
-                    built_exc_type_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
-                    built_exc_msg_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
-                    built_stacktrace_cov = ["0"] * len(self.project_tcs_data)  # Initialize with zeros
-                    self.update_mut_cov_bit_sequence(
-                        built_result_cov, result_transition, self.class2tcsInfo[target_class]
-                    )
-                    self.update_mut_cov_bit_sequence(
-                        built_exc_type_cov, exception_type_transition, self.class2tcsInfo[target_class]
-                    )
-                    self.update_mut_cov_bit_sequence(
-                        built_exc_msg_cov, exception_msg_transition, self.class2tcsInfo[target_class]
-                    )
-                    self.update_mut_cov_bit_sequence(
-                        built_stacktrace_cov, stacktrace_transition, self.class2tcsInfo[target_class]
-                    )
-
-                    # Save the mutation information
-                    result_cov = "".join(built_result_cov)
-                    exc_type_cov = "".join(built_exc_type_cov)
-                    exc_msg_cov = "".join(built_exc_msg_cov)
-                    stacktrace_cov = "".join(built_stacktrace_cov)
-
-                    unique_mutation_idx += 1
-                    values = [
-                        self.fault_idx, unique_mutation_idx, class_name, method, line,
-                        mutator, result_cov, exc_type_cov, exc_msg_cov, stacktrace_cov,
-                        status, len(self.project_tcs_data)
-                    ]
-
-                    self.DB.insert(
-                        "d4j_mutation_info",
-                        "fault_idx, mutation_idx, class, method, line, mutator, result_transition, exception_type_transition, exception_msg_transition, stacktrace_transition, status, num_tests_run",
-                        values
-                    )
         LOGGER.info(f"Save {unique_mutation_idx+1} mutation info for subject {self.PID}, bug ID {self.BID}, experiment label {self.EL}.")
 
     def zip_result_dir(self):
