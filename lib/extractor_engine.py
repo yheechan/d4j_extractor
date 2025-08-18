@@ -8,17 +8,17 @@ import os
 import concurrent.futures
 import logging
 import queue
-import threading
 from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
 
 class ExtractorEngine:
-    def __init__(self, pid, parallel=10, experiment_label=None, with_mutation_coverage=False):
+    def __init__(self, pid, parallel=10, experiment_label=None, with_mutation_coverage=False, time_measurement=False):
         self.PID = pid
         self.PARALLEL = parallel
         self.EL = experiment_label
         self.WITH_MUTATION_COVERAGE = with_mutation_coverage
+        self.TIME_MEASUREMENT = time_measurement
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -56,22 +56,30 @@ class ExtractorEngine:
 
             scripts_dir = self.REMOTE_D4J_DIR + "scripts/"
 
-            # send compile2prepare.sh
-            send_file(self.SCRIPTS_DIR + "/compile2prepare.sh", scripts_dir, server)
-            chmod_file(scripts_dir + "compile2prepare.sh", "777", server)
+            # send 0_compile2prepare.sh
+            send_file(self.SCRIPTS_DIR + "/0_compile2prepare.sh", scripts_dir, server)
+            chmod_file(scripts_dir + "0_compile2prepare.sh", "777", server)
 
             if self.WITH_MUTATION_COVERAGE:
                 # send run_pit.sh
-                send_file(self.SCRIPT_DIR + "/run_pit.sh", scripts_dir, server)
+                send_file(self.SCRIPTS_DIR + "/run_pit.sh", scripts_dir, server)
                 chmod_file(scripts_dir + "run_pit.sh", "777", server)
 
-                # send list_methods.sh
-                send_file(self.SCRIPTS_DIR + "/list_methods.sh", scripts_dir, server)
-                chmod_file(scripts_dir + "list_methods.sh", "777", server)
+                # send 1_list_tests.sh
+                send_file(self.SCRIPTS_DIR + "/1_list_tests.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "1_list_tests.sh", "777", server)
 
-                # send instrument.sh
-                send_file(self.SCRIPTS_DIR + "/instrument.sh", scripts_dir, server)
-                chmod_file(scripts_dir + "instrument.sh", "777", server)
+                # send 2_instrument.sh
+                send_file(self.SCRIPTS_DIR + "/2_instrument.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "2_instrument.sh", "777", server)
+
+                # send 3_execute_with_coverage.sh
+                send_file(self.SCRIPTS_DIR + "/3_execute_with_coverage.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "3_execute_with_coverage.sh", "777", server)
+
+                # send 4_process_cov.sh
+                send_file(self.SCRIPTS_DIR + "/4_process_cov.sh", scripts_dir, server)
+                chmod_file(scripts_dir + "4_process_cov.sh", "777", server)
             else:
                 # send measureExpectedTime.py and perFile_expected_time.sh
                 send_file(self.SCRIPTS_DIR + "/measureExpectedTime.py", scripts_dir, server)
@@ -181,6 +189,30 @@ class ExtractorEngine:
                     "fault_idx"
                 )
 
+            if not self.DB.table_exists("d4j_time_measurement_info"):
+                columns = [
+                    "pid TEXT NOT NULL",
+                    "bid INT NOT NULL",
+                    "experiment_label TEXT NOT NULL",
+                    "instr_duration_sec REAL NOT NULL",
+                    "exec_duration_sec REAL NOT NULL",
+                    "process_duration_sec REAL NOT NULL",
+                    "num_of_failing_tests INT NOT NULL",
+                    "num_of_passing_tests INT NOT NULL",
+                    "num_of_relevant_tests INT NOT NULL",
+                    "relevant_test_total_time_ms REAL NOT NULL",
+                    "num_mutants INT NOT NULL",
+                    "num_lines_executed_by_fail_tcs INT NOT NULL"
+                ]
+                col_str = ", ".join(columns)
+                self.DB.create_table("d4j_time_measurement_info", col_str)
+                self.DB.create_index(
+                    "d4j_time_measurement_info",
+                    "idx_d4j_time_measurement_info_pid_bid",
+                    "pid, bid"
+                )
+
+        # Preparing for server
         servers = self.SERVER_LIST
         for i in range(0, len(servers), batch_size):
             batch = servers[i:i+batch_size]
@@ -191,37 +223,44 @@ class ExtractorEngine:
                         future.result()
                     except Exception as e:
                         LOGGER.error(f"Error preparing server: {e}")
-        
+
+        # Preparing database
         prepare_database()
-    
-    def run_mutation_testing(self, batch_size=5):
+
+    def run_mutation_testing(self):
         def prepare_dir(server, pid, bid):
             command = f"mkdir -p {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo"
-            execute_command(command, server)
+            return execute_command(command, server)
 
         def compile2prepare(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash compile2prepare.sh {pid} {bid} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
-            execute_command(command, server)
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash 0_compile2prepare.sh {pid} {bid} {self.EL} > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/compile2prepare-exec.log 2>&1"
+            return execute_command(command, server)
         
         def generate_mutants(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash run_pit.sh {pid} {bid} {self.PARALLEL}"
-            execute_command(command, server)
+            command = f"cd {self.REMOTE_D4J_DIR}scripts/ && bash run_pit.sh {pid} {bid} {self.EL} {self.PARALLEL}"
+            return execute_command(command, server)
 
         def conduct_mutation_testing(server, pid, bid):
-            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {self.EL} -p {self.PARALLEL} --mutation-testing -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/mutation-testing-exec.log 2>&1"
-            execute_command(command, server)
+            if self.TIME_MEASUREMENT:
+                command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {self.EL} -p {self.PARALLEL} --mutation-testing --time-measurement -d > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/mutation-testing-exec.log 2>&1"
+            else:
+                command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {self.EL} -p {self.PARALLEL} --mutation-testing -d > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/mutation-testing-exec.log 2>&1"
+            return execute_command(command, server)
 
         def measure_expected_time(server, pid, bid): # DEPRECATED
             command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 measureExpectedTime.py --pid {pid} --bid {bid} --num-threads {self.PARALLEL}"
-            execute_command(command, server)
+            return execute_command(command, server)
         
         def run_pit(server, pid, bid): # DEPRECATED
             command = f"cd {self.REMOTE_D4J_DIR}scripts/ && python3 run_pit_all.py --pid {pid} --bid {bid} --num-threads {self.PARALLEL}"
-            execute_command(command, server)
+            return execute_command(command, server)
 
-        def save_results(server, pid, bid, el): 
-            command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -v > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/saver-exec.log 2>&1"
-            execute_command(command, server)
+        def save_results(server, pid, bid, el):
+            if self.TIME_MEASUREMENT:
+                command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results --time-measurement -d > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/saver-exec.log 2>&1"
+            else:
+                command = f"cd {self.REMOTE_D4J_DIR} && python3 main.py -pid {pid} -bid {bid} -el {el} --save-results -d > {self.REMOTE_WORK_DIR}/out_dir/{pid}-{bid}b-result/subjectInfo/saver-exec.log 2>&1"
+            return execute_command(command, server)
 
         # Dynamic task distribution: servers pick up tasks as they become available
         def process_bug_tasks(server, task_queue):
@@ -235,16 +274,20 @@ class ExtractorEngine:
                     
                     LOGGER.info(f"Server {server} starting work on bug {bug_id}")
                     try:
-                        prepare_dir(server, self.PID, bug_id)
-                        compile2prepare(server, self.PID, bug_id)
+                        res = prepare_dir(server, self.PID, bug_id)
+                        res = compile2prepare(server, self.PID, bug_id)
                         if self.WITH_MUTATION_COVERAGE:
-                            generate_mutants(server, self.PID, bug_id)
-                            conduct_mutation_testing(server, self.PID, bug_id)
+                            res = generate_mutants(server, self.PID, bug_id)
+                            res = conduct_mutation_testing(server, self.PID, bug_id)
                         else:
-                            measure_expected_time(server, self.PID, bug_id)
-                            run_pit(server, self.PID, bug_id)
-                        save_results(server, self.PID, bug_id, self.EL)
-                        LOGGER.info(f"Server {server} completed work on bug {bug_id}")
+                            res = measure_expected_time(server, self.PID, bug_id)
+                            res = run_pit(server, self.PID, bug_id)
+                        if res:
+                            save_results(server, self.PID, bug_id, self.EL)
+                            LOGGER.info(f"Server {server} completed work on bug {bug_id}")
+                        else:
+                            LOGGER.warning(f"Server {server} failed to process bug {bug_id}")
+
                     except Exception as e:
                         LOGGER.error(f"Server {server} failed on bug {bug_id}: {e}")
                     finally:

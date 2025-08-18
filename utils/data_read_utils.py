@@ -1,6 +1,7 @@
 import csv
 import re
 import os
+import json
 import logging
 
 LOGGER = logging.getLogger(__name__)
@@ -21,18 +22,29 @@ def get_line_info(file_path):
     with open(file_path, 'r') as file:
         lines = file.readlines()
         for line in lines[1:]:
-            packageName, leftover = line.split("$")
-            className, leftover = leftover.split("#")
-            className = ".".join([packageName, className])
-            methodName, lineNum = leftover.split(":")
-            lineNum = int(lineNum)
+            line = line.strip()
+            if not line:  # Skip empty lines
+                continue
+            
+            try:
+                # Split only on the first $ to separate package from class+method+line
+                packageName, leftover = line.split("$", 1)
+                # Split only on the first # to separate class from method+line
+                className, leftover = leftover.split("#", 1)
+                className = ".".join([packageName, className])
+                # Split only on the last : to separate method from line number
+                methodName, lineNum = leftover.rsplit(":", 1)
+                lineNum = int(lineNum)
 
-            lineIdx += 1
-            lineIdx2lineInfo[lineIdx] = {
-                "className": className,
-                "methodName": methodName,
-                "lineNum": lineNum
-            }
+                lineIdx += 1
+                lineIdx2lineInfo[lineIdx] = {
+                    "className": className,
+                    "methodName": methodName,
+                    "lineNum": lineNum
+                }
+            except (ValueError, IndexError):
+                # Skip lines that can't be parsed correctly
+                continue
     return lineIdx2lineInfo
 
 def parse_execption(msg):
@@ -85,7 +97,7 @@ def get_test_info(file_path):
                     continue
                     
                 # Check if this looks like a proper CSV start (has test name pattern)
-                if ('Test#' in line or '.Test' in line) and line.count(',') >= 3:
+                if ('#test' in line or 'Test#' in line or '.Test' in line or 'TestCase#' in line) and line.count(',') >= 3:
                     # This is likely a new test row, save previous if exists
                     if current_line:
                         merged_lines.append(current_line)
@@ -125,7 +137,7 @@ def get_test_info(file_path):
                         name, outcome, nanoSecs, stacktrace = row
                     
                     # Skip header row
-                    if name == "name" or "Test#" not in name:
+                    if name == "name" or ("#" not in name):
                         continue
 
                     className, testName = name.split("#")
@@ -179,8 +191,14 @@ def get_test_cov(file_path, tcIdx2tcInfo):
             resChar = tcCovData[-1]  # get the last character of the bit sequence
 
             if resChar == "+":
+                if tcInfo["result"] != 0:
+                    LOGGER.debug(tcIdx)
+                    LOGGER.debug(json.dumps(tcInfo, indent=2))
                 assert tcInfo["result"] == 0, f"Test case {tcIdx} result mismatch: expected 0, got {tcInfo['result']}"
             else:
+                if tcInfo["result"] != 1:
+                    LOGGER.debug(tcIdx)
+                    LOGGER.debug(json.dumps(tcInfo, indent=2))
                 assert tcInfo["result"] == 1, f"Test case {tcIdx} result mismatch: expected 1, got {tcInfo['result']}"
             
             tcInfo["covBitVal"] = covBitVal

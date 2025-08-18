@@ -4,6 +4,7 @@ from utils.data_read_utils import *
 from utils.general_utils import *
 
 
+import json
 import time
 import os
 import subprocess as sp
@@ -16,11 +17,12 @@ import logging
 LOGGER = logging.getLogger(__name__)
 
 class MutationTestingEngine:
-    def __init__(self, pid, bid, experiment_label, parallel):
+    def __init__(self, pid, bid, experiment_label, parallel, timeMeasurement=False):
         self.PID = pid
         self.BID = bid
         self.EL = experiment_label
         self.PARALLEL = parallel
+        self.TIME_MEASUREMENT = timeMeasurement
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -41,18 +43,26 @@ class MutationTestingEngine:
 
         # 1. Test for baseline results
         startTime = time.time()
-        self.baseline_results()
+        time_info = self.execute_baseline_results()
         self.EXEC_DURATION_SECS = (time.time() - startTime) * 2.0
 
         # 2. Get baseline results
         baseline_results = self.get_results("baseline")
 
         # 3. Save relevant_tests (tests that executed lines excecuted by failing tests)
-        self.save_relevant_tests(baseline_results)
+        relevant_tests_dict, numLinesByFails = self.save_relevant_tests(baseline_results)
 
         # 4. get tasks, mutants to test
         mutantIdx2mutantInfo = self.get_mutants()
 
+        if self.TIME_MEASUREMENT:
+            self.save_time_measurement_info(
+                relevant_tests_dict, 
+                mutantIdx2mutantInfo, 
+                time_info,
+                numLinesByFails
+            )
+            return 
 
         # Get target bin classes directory
         target_bin_classes = ""
@@ -67,20 +77,58 @@ class MutationTestingEngine:
         # 6. start mutation testing
         self.start_mutation_testing(mutantIdx2mutantInfo)
 
+    def save_time_measurement_info(self, relevant_tests_dict, mutantIdx2mutantInfo, time_info, numLinesByFails):
+        relevant_test_total_time_ms = 0
+        num_failing_tcs = 0
+        num_passing_tcs = 0
+        for test_id, test_info in relevant_tests_dict.items():
+            relevant_test_total_time_ms += test_info["duration_ms"]
+            if test_info["result"] == 1:
+                num_failing_tcs += 1
+            else:
+                num_passing_tcs += 1
 
+        overall_data = {
+            "pid": self.PID,
+            "bid": self.BID,
+            "experiment_label": self.EL,
+            **time_info,
+            "num_of_failing_tests": num_failing_tcs,
+            "num_of_passing_tests": num_passing_tcs,
+            "num_of_relevant_tests": len(relevant_tests_dict),
+            "relevant_test_total_time_ms": relevant_test_total_time_ms,
+            "num_mutants": len(mutantIdx2mutantInfo),
+            "num_lines_executed_by_fail_tcs": numLinesByFails
+        }
 
-    def baseline_results(self):
+        dest_file = os.path.join(self.RESULT_DIR + "/subjectInfo/time_measurement.json")
+        with open(dest_file, 'w') as f:
+            json.dump(overall_data, f)
+
+    def execute_baseline_results(self):
         # list all tests
         list_all_tests(self.PID, self.BID, self.EL, 0, self.SCRIPTS_DIR)
 
         # instrument
+        inst_start_time = time.time()
         instrument(self.PID, self.BID, self.EL, 0, "baseline", self.SCRIPTS_DIR)
+        inst_duration_sec = time.time() - inst_start_time
 
         # execute
+        exec_start_time = time.time()
         execute_with_coverage(self.PID, self.BID, self.EL, 0, "baseline", "all_tests", self.SCRIPTS_DIR)
+        exec_duration_sec = time.time() - exec_start_time
 
         # process_cov
+        process_start_time = time.time()
         process_cov(self.PID, self.BID, self.EL, 0, "baseline", self.SCRIPTS_DIR)
+        process_duration_sec = time.time() - process_start_time
+
+        return {
+            "instr_duration_sec": inst_duration_sec,
+            "exec_duration_sec": exec_duration_sec,
+            "process_duration_sec": process_duration_sec
+        }
 
     def get_results(self, work_name):
         # Get the results for the specified work name
@@ -130,6 +178,10 @@ class MutationTestingEngine:
                 className = test["className"]
                 methodName = test["methodName"]
                 f.write(f"{classType},{className}#{methodName}\n")
+        
+        linesExecutedByFailTcsBitStr = format(linesExecutedByFailTcsBitVal, f'0{len(baseline_results["lineIdx2lineInfo"])}b')
+        numLinesByFails = linesExecutedByFailTcsBitStr.count("1")
+        return relevant_tests, numLinesByFails
 
     def get_mutants(self):
         mutants_dir = os.path.join(self.RESULT_DIR, "pit-results/mutants")

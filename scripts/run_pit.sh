@@ -27,10 +27,10 @@ cp_test=$(cat "$subjectInfo_dir/cp_test.txt")
 
 
 # Enhanced classpath with JUnit 4
-PITEST_JAR="/home/yangheechan/.d4j_src/pitest/pitest-command-line/target/pitest-command-line-dev-SNAPSHOT.jar"
+# PITEST_JAR="/home/yangheechan/.d4j_src/pitest/pitest-command-line/target/pitest-command-line-dev-SNAPSHOT.jar"
+# enhanced_cp="/home/yangheechan/.d4j_src/defects4j/framework/projects/lib/junit-4.12-hamcrest-1.3.jar:$cp_test"
+enhanced_cp="$JUNIT4_JAR:$cp_test"
 PIT_REPORTER_CLASS="org.pitest.mutationtest.commandline.MutationCoverageReport"
-enhanced_cp="/home/yangheechan/.d4j_src/defects4j/framework/projects/lib/junit-4.12-hamcrest-1.3.jar:$cp_test"
-# enhanced_cp="$JUNIT4_JAR:$cp_test"
 
 
 

@@ -23,6 +23,7 @@ def make_parser():
     parser.add_argument("-e", "--extractor", action="store_true", help="Run the extractor engine")
     parser.add_argument("-p", "--parallel", type=int, default=10, help="Number of parallel processes to run")
     parser.add_argument("-wmc", "--with-mutation-coverage", action="store_true", help="Enable mutation coverage")
+    parser.add_argument("-tm", "--time-measurement", action="store_true", help="Enable time measurement")
 
     # Arguments for MutationTestingEngine
     parser.add_argument("-mt", "--mutation-testing", action="store_true", help="Run the mutation testing engine")
@@ -68,7 +69,7 @@ def main():
         if not args.project_id:
             logging.error("Project ID is required when running the extractor.")
             return
-        extractor_engine = ExtractorEngine(args.project_id, args.parallel, args.experiment_label, args.with_mutation_coverage)
+        extractor_engine = ExtractorEngine(args.project_id, args.parallel, args.experiment_label, args.with_mutation_coverage, args.time_measurement)
         function_name = "ExtractorEngine"
         slack.send_message(f"Starting {function_name} for project {args.project_id} with parallel={args.parallel} with_mutation_coverage={args.with_mutation_coverage}.")
         extractor_engine.run()
@@ -76,7 +77,7 @@ def main():
         if not args.project_id:
             logging.error("Project ID is required when running the mutation testing.")
             return
-        mutation_testing_engine = MutationTestingEngine(args.project_id, args.bug_id, args.experiment_label, args.parallel)
+        mutation_testing_engine = MutationTestingEngine(args.project_id, args.bug_id, args.experiment_label, args.parallel, args.time_measurement)
         function_name = "MutationTestingEngine"
         slack.send_message(f"Starting {function_name} for project {args.project_id} and bug {args.bug_id} with parallel={args.parallel}.")
         mutation_testing_engine.run()
@@ -87,7 +88,7 @@ def main():
         if not args.bug_id:
             logging.error("Bug ID is required when saving results.")
             return
-        saver_engine = SaverEngine(args.project_id, args.bug_id, args.experiment_label)
+        saver_engine = SaverEngine(args.project_id, args.bug_id, args.experiment_label, args.time_measurement)
         function_name = "SaverEngine"
         slack.send_message(f"Starting {function_name} for project {args.project_id} and bug {args.bug_id}.")
         saver_engine.run()

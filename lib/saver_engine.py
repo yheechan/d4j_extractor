@@ -12,10 +12,11 @@ import shutil
 LOGGER = logging.getLogger(__name__)
 
 class SaverEngine:
-    def __init__(self, pid, bid, experiment_label):
+    def __init__(self, pid, bid, experiment_label, timeMeasurement=False):
         self.PID = pid
         self.BID = bid
         self.EL = experiment_label
+        self.TIME_MEASUREMENT = timeMeasurement
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -31,9 +32,14 @@ class SaverEngine:
 
         self.D4J_DIR = self.os_copy.get("SERVER_HOME") + f"defects4j/"
         self.WORK_DIR = f"{self.D4J_DIR}{self.EL}/{self.PID}"
+        self.REPO_DIR = f"{self.WORK_DIR}/{self.PID}-{self.BID}b"
         self.RESULT_DIR = f"{self.WORK_DIR}/out_dir/{self.PID}-{self.BID}b-result"
 
     def run(self):
+        if self.TIME_MEASUREMENT:
+            self.write_time_measurement_to_db()
+            return
+        
         self.fault_idx = self.save_fault()
 
         self.tcName2tcIdx = self.getTcName2tcIdx()
@@ -56,6 +62,23 @@ class SaverEngine:
         self.save_mutation_info(mutantIdx2mutantInfo)
         self.zip_result_dir()
     
+    def write_time_measurement_to_db(self):
+        time_measurement_json = os.path.join(self.RESULT_DIR, "subjectInfo/time_measurement.json")
+        with open(time_measurement_json, 'r') as f:
+            time_data = json.load(f)
+            col = time_data.keys()
+            col_str = ", ".join(col)
+            self.DB.insert(
+                "d4j_time_measurement_info",
+                col_str,
+                list(time_data.values())
+            )
+
+        # Remove result directory
+        shutil.rmtree(self.RESULT_DIR, ignore_errors=True)
+        # Remove repo directory
+        shutil.rmtree(self.REPO_DIR, ignore_errors=True)
+
     def save_fault(self):
         values = [self.PID, self.BID, self.EL]
         self.DB.insert(
@@ -400,3 +423,6 @@ class SaverEngine:
         LOGGER.info(f"Output directory {self.RESULT_DIR} zipped to {zip_file}.")
 
         shutil.rmtree(self.RESULT_DIR, ignore_errors=True)
+
+        # Remove repo directory
+        shutil.rmtree(self.REPO_DIR, ignore_errors=True)
