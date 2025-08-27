@@ -1,11 +1,13 @@
 from utils.sbfl_utils import *
 from utils.mbfl_utils import *
 from utils.rank_utils import add_sbfl_ranks, add_mbfl_ranks
+from utils.st_utils import *
 
 
 import logging
 import json
 import random
+import time
 
 LOGGER = logging.getLogger(__name__)
 
@@ -136,7 +138,8 @@ def get_tcIdx2tcInfo(DB, FID):
     """
     col = [
         "tc_idx", "test_name", "result", "execution_time_ms",
-        "bit_sequence_length", "line_coverage_bit_sequence"
+        "bit_sequence_length", "line_coverage_bit_sequence",
+        "stacktrace"
     ]
     col_str = ", ".join(col)
     tc_info = DB.read(
@@ -151,14 +154,15 @@ def get_tcIdx2tcInfo(DB, FID):
     for tc_data in tc_info:
         tc_idx, test_name, result, \
             execution_time_ms, bit_sequence_length, \
-            line_coverage_bit_sequence = tc_data
+            line_coverage_bit_sequence, stacktrace = tc_data
         
         tcIdx2tcInfo[tc_idx] = {
             "test_name": test_name,
             "result": result,
             "execution_time_ms": execution_time_ms,
             "bit_sequence_length": bit_sequence_length,
-            "line_coverage_bit_sequence": line_coverage_bit_sequence
+            "line_coverage_bit_sequence": line_coverage_bit_sequence,
+            "stack_trace": stacktrace
         }
 
     return tcIdx2tcInfo
@@ -204,6 +208,36 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
         conditions={"fault_idx": FID}
     )
 
+    # mutationClass2Method2lineNum2mutationInfo
+    mutation_dict = {}
+    for mutation in mutation_info:
+        mutation_idx, class_name, method, line, \
+                result_transition, exception_type_transition, \
+                exception_msg_transition, stacktrace_transition, \
+                status, num_tests_run = mutation
+        
+        all_types_transition = combine_transitions(
+            result_transition, exception_type_transition,
+            exception_msg_transition, stacktrace_transition
+        )
+        
+        if class_name not in mutation_dict:
+            mutation_dict[class_name] = {}
+        if method not in mutation_dict[class_name]:
+            mutation_dict[class_name][method] = {}
+        if line not in mutation_dict[class_name][method]:
+            mutation_dict[class_name][method][line] = []
+        mutation_dict[class_name][method][line].append({
+            "mutation_idx": mutation_idx,
+            "result_transition": result_transition,
+            "exception_type_transition": exception_type_transition,
+            "exception_msg_transition": exception_msg_transition,
+            "stacktrace_transition": stacktrace_transition,
+            "all_types_transition": all_types_transition,
+            "status": status,
+            "num_tests_run": num_tests_run
+        })
+    
     lineIdx2mutation = {}
     for lineIdx, line_data in lineIdx2lineData.items():
         lineIdx2mutation[lineIdx] = []
@@ -211,31 +245,13 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
         line_method = line_data['method']
         line_num = line_data['line_num']
 
-        for mutation in mutation_info:
-            mutation_idx, class_name, method, line, \
-                result_transition, exception_type_transition, \
-                exception_msg_transition, stacktrace_transition, \
-                status, num_tests_run = mutation
-
-            all_types_transition = combine_transitions(
-                result_transition, exception_type_transition,
-                exception_msg_transition, stacktrace_transition
-            )
-            
-            if (class_name == line_class) \
-                and (method in line_method) \
-                and (line == line_num):
-                mutation_data = {
-                    "mutation_idx": mutation_idx,
-                    "result_transition": result_transition,
-                    "exception_type_transition": exception_type_transition,
-                    "exception_msg_transition": exception_msg_transition,
-                    "stacktrace_transition": stacktrace_transition,
-                    "all_types_transition": all_types_transition,
-                    "status": status,
-                    "num_tests_run": num_tests_run
-                }
-                lineIdx2mutation[lineIdx].append(mutation_data)
+        line_start_time = time.time()
+        if line_class in mutation_dict:
+            if line_method in mutation_dict[line_class]:
+                if line_num in mutation_dict[line_class][line_method]:
+                    lineIdx2mutation[lineIdx].extend(mutation_dict[line_class][line_method][line_num])
+        line_time = time.time() - line_start_time
+        LOGGER.debug(f"[{FID}b] get_lineIdx2mutation took {line_time:.2f} seconds. with mutation cnt {len(mutation_info)}")
 
     # shuffle the mutation list for each line
     mut_exists = False
@@ -258,7 +274,7 @@ def get_total_failing_tcs(tcIdx2tcInfo):
     total_failing_tcs = sum(1 for tcInfo in tcIdx2tcInfo.values() if tcInfo['result'] == 1)
     return total_failing_tcs
 
-def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
+def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData, rid=None):
     """
     Measure SBFL scores and save them to the database.
     :param EXP_CONFIG: Experiment configuration dictionary.
@@ -274,11 +290,22 @@ def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
         raise ValueError(f"No test case information found for fault index {FID}.")
     LOGGER.info(f"Processing {len(tcIdx2tcInfo)} test cases for fault index {FID}.")
 
+
+    # Stack Trace Relevance
+    st_start_time = time.time()
+    measure_ST_relevance(tcIdx2tcInfo, lineIdx2lineData)
+    st_time = time.time() - st_start_time
+    LOGGER.debug(f"[rid{rid}-{FID}b] Stack Trace Relevance took {st_time:.2f} seconds.")
+    # add_ST_rank(lineIdx2lineData)
+
     # SBFL
+    sbfl_start_time = time.time()
     measure_spectrum(tcIdx2tcInfo, lineIdx2lineData)
     measure_sbfl_susp_scores(lineIdx2lineData)
     # Calculate ranks for SBFL formulas
     add_sbfl_ranks(lineIdx2lineData)
+    sbfl_time = time.time() - sbfl_start_time
+    LOGGER.debug(f"[rid{rid}-{FID}b] SBFL took {sbfl_time:.2f} seconds.")
     sorted_lineIdx = get_sorted_lineIdx(lineIdx2lineData, EXP_CONFIG["line_selection_formula"])
 
 
@@ -290,9 +317,17 @@ def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
         raise ValueError(f"No failing test cases found for fault index {FID}.")
     LOGGER.info(f"Total failing test cases: {total_failing_tcs}")
 
+    get_lineIdx2lineData_start_time = time.time()
     lineIdx2mutation = get_lineIdx2mutation(DB, FID, lineIdx2lineData)
-    measure_transition_counts(lineIdx2mutation, tcIdx2tcInfo, EXP_CONFIG["tcs_reduction"])
+    get_lineIdx2lineData_time = time.time() - get_lineIdx2lineData_start_time
+    LOGGER.debug(f"[rid{rid}-{FID}b] get_lineIdx2lineData took {get_lineIdx2lineData_time:.2f} seconds.")
 
+    measure_transition_start_time = time.time()
+    measure_transition_counts(lineIdx2mutation, tcIdx2tcInfo, EXP_CONFIG["tcs_reduction"])
+    measure_transition_time = time.time() - measure_transition_start_time
+    LOGGER.debug(f"[rid{rid}-{FID}b] measure_transition_counts took {measure_transition_time:.2f} seconds.")
+
+    mbfl_start_time = time.time()
     for line_cnt in EXP_CONFIG["target_lines"]:
         target_line_perc = line_cnt / 100.0
         selection_amount = int(len(sorted_lineIdx) * target_line_perc)
@@ -302,14 +337,29 @@ def measure_scores(EXP_CONFIG, DB, FID, lineIdx2lineData):
 
         for mut_cnt in EXP_CONFIG["mutation_cnt"]:
             first_key = next(iter(lineIdx2mutation))
-            if f"lineCnt{line_cnt}_mutCnt{mut_cnt}_all_types_transition_final_muse_score_rank" in lineIdx2lineData[first_key]:
+            if f"lineCnt{line_cnt}_mutCnt{mut_cnt}tcs{EXP_CONFIG['tcs_reduction']}_all_types_transition_final_metal_score_rank" in lineIdx2lineData[first_key]:
                 LOGGER.debug(f"Skipping line count {line_cnt} and mutation count {mut_cnt} as scores already calculated.")
                 continue
+
+            get_using_mutants_start_time = time.time()
             using_mutants = get_using_mutants(lineIdx2mutation, selected_lineIdx, mut_cnt)
+            get_using_mutants_time = time.time() - get_using_mutants_start_time
+            LOGGER.debug(f"[rid{rid}-{FID}b] get_using_mutants took {get_using_mutants_time:.2f} seconds.")
+
+            get_overall_data_start_time = time.time()
             overall_data = get_overall_data(using_mutants, total_failing_tcs, line_cnt, mut_cnt, EXP_CONFIG["tcs_reduction"])
+            get_overall_data_time = time.time() - get_overall_data_start_time
+            LOGGER.debug(f"[rid{rid}-{FID}b] get_overall_data took {get_overall_data_time:.2f} seconds.")
+
+            measure_mbfl_score_time = time.time()
             measure_mbfl_susp_scores(
                 lineIdx2lineData, using_mutants, line_cnt, mut_cnt, EXP_CONFIG["tcs_reduction"], overall_data
             )
+            measure_mbfl_score_time = time.time() - measure_mbfl_score_time
+            LOGGER.debug(f"[rid{rid}-{FID}b] measure_mbfl_susp_scores took {measure_mbfl_score_time:.2f} seconds.")
 
-    # # Calculate ranks for MBFL formulas
+    # Calculate ranks for MBFL formulas
     add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG)
+
+    mbfl_time = time.time() - mbfl_start_time
+    LOGGER.debug(f"[rid{rid}-{FID}b] MBFL took {mbfl_time:.2f} seconds.")

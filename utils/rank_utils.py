@@ -85,6 +85,8 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
     :param lineIdx2lineData: Mapping of line indices to line data
     :param EXP_CONFIG: Experiment configuration containing target lines and mutation counts
     """
+    first_key = next(iter(lineIdx2lineData))
+
     tcs_reduction = EXP_CONFIG["tcs_reduction"]
     for line_cnt in EXP_CONFIG["target_lines"]:
         for mut_cnt in EXP_CONFIG["mutation_cnt"]:
@@ -93,7 +95,8 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
                 muse_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_muse_score"
                 
                 # Check if the key exists in at least one line's data
-                if any(muse_key in data for data in lineIdx2lineData.values()):
+                if any(muse_key in data for data in lineIdx2lineData.values()) \
+                    and f"{muse_key}_rank" not in lineIdx2lineData[first_key]:
                     # Extract (lineIdx, score) pairs for this MUSE formula
                     score_pairs = [(line_idx, data.get(muse_key, float('-inf'))) 
                                 for line_idx, data in lineIdx2lineData.items()]
@@ -111,7 +114,8 @@ def add_mbfl_ranks(lineIdx2lineData, EXP_CONFIG):
                 metal_key = f"lineCnt{line_cnt}_mutCnt{mut_cnt}_tcs{tcs_reduction}_{transition_key}_final_metal_score"
                 
                 # Check if the key exists in at least one line's data
-                if any(metal_key in data for data in lineIdx2lineData.values()):
+                if any(metal_key in data for data in lineIdx2lineData.values()) \
+                    and f"{metal_key}_rank" not in lineIdx2lineData[first_key]:
                     # Extract (lineIdx, score) pairs for this METAL formula
                     score_pairs = [(line_idx, data.get(metal_key, float('-inf'))) 
                                 for line_idx, data in lineIdx2lineData.items()]

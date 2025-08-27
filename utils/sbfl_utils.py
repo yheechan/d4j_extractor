@@ -18,6 +18,7 @@ def get_sorted_lineIdx(lineIdx2lineData, std_formula):
 def measure_spectrum(tcIdx2tcInfo, lineIdx2lineData):
     first_key = next(iter(lineIdx2lineData))
     if 'ep' in lineIdx2lineData[first_key]:
+        LOGGER.debug("Skipping spectrum measurement")
         return
 
     for tcIdx, tcInfo in tcIdx2tcInfo.items():

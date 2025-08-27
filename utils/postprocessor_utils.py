@@ -56,7 +56,7 @@ def normalize_data(pkl_file, EXP_CONFIG):
 def set_dataset(
         dataset, full_fault_id, bid_data, 
         statement_data=None, faulty_statement_data=None, 
-        lnc=100, mtc=10, tcr="All", 
+        lnc=100, mtc=10, tcr="Reduced", 
         set_statement_info=False
     ):
 
@@ -82,6 +82,9 @@ def set_dataset(
             for transition_type, transition_key in TRANSITION_TYPES.items():
                 mbfl_key = f"lineCnt{lnc}_mutCnt{mtc}_tcs{tcr}_{transition_key}_final_{formula}_score_norm"
                 line_x_list.append(line_data[mbfl_key])
+        
+        # Add ST relevance values
+        line_x_list.append(line_data["st_relevance"])
 
         dataset["x"][full_fault_id].append(line_x_list)
 

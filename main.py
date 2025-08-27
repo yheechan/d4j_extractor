@@ -96,9 +96,9 @@ def main():
         if not args.project_id:
             logging.error("Project ID is required when running the constructor.")
             return
-        constructor_engine = ConstructorEngine(args.project_id, args.experiment_label)
+        constructor_engine = ConstructorEngine(args.project_id, args.experiment_label, args.parallel)
         function_name = "ConstructorEngine"
-        slack.send_message(f"Starting {function_name} for project {args.project_id}.")
+        slack.send_message(f"Starting {function_name} for project {args.project_id} with {args.parallel} parallel workers.")
         constructor_engine.run()
     elif args.postprocessor:
         if not args.experiment_label:
