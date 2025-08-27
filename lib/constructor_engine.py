@@ -7,14 +7,16 @@ import logging
 import pickle
 import time
 import concurrent.futures
+import queue
 from dotenv import load_dotenv
 
 LOGGER = logging.getLogger(__name__)
 
 class ConstructorEngine:
-    def __init__(self, pid, experiment_label):
+    def __init__(self, pid, experiment_label, parallel=50):
         self.PID = pid
         self.EL = experiment_label
+        self.PARALLEL = parallel
 
         load_dotenv()
         self.os_copy = os.environ.copy()
@@ -165,48 +167,55 @@ class ConstructorEngine:
                 all_tasks.append((rid, bid, fid))
         
         total_tasks = len(all_tasks)
-        batch_size = 30
-        
         LOGGER.info(f"Created {total_tasks} total tasks ({self.EXP_CONFIG['num_repeats']} repeats × {len(self.BID2FID)} bugs)")
         
-        # Process all tasks in batches across repeats and bugs
-        for i in range(0, total_tasks, batch_size):
-            batch = all_tasks[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            total_batches = (total_tasks + batch_size - 1) // batch_size
-            
-            LOGGER.info(f"Processing batch {batch_num}/{total_batches} with {len(batch)} tasks")
-            LOGGER.debug(f"Batch {batch_num} tasks: {[(rid, bid) for rid, bid, _ in batch[:5]]}{'...' if len(batch) > 5 else ''}")
-            
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(batch_size, len(batch))) as executor:
-                # Submit all tasks in the batch
-                future_to_task = {
-                    executor.submit(self._process_single_task, rid, bid, fid): (rid, bid)
-                    for rid, bid, fid in batch
-                }
-                
-                # Collect results as they complete
-                completed_count = 0
-                failed_tasks = []
-                
-                for future in concurrent.futures.as_completed(future_to_task):
-                    rid, bid = future_to_task[future]
+        def worker(task_queue, worker_id):
+            """Worker function that processes tasks from a shared queue"""
+            while True:
+                try:
+                    task = task_queue.get(timeout=1)
+                    if task is None:
+                        break
+                    
+                    rid, bid, fid = task
+                    LOGGER.info(f"Worker {worker_id}: Starting repeat {rid}, bug ID {bid}")
+                    
                     try:
-                        future.result()  # This will raise any exception that occurred
-                        completed_count += 1
-                        LOGGER.info(f"Successfully processed repeat {rid}, bug ID {bid} ({completed_count}/{len(batch)} completed in batch {batch_num})")
-                    except Exception as exc:
-                        failed_tasks.append((rid, bid))
-                        LOGGER.error(f"Repeat {rid}, bug ID {bid} generated an exception: {exc}")
-                        # Continue processing other tasks instead of failing immediately
-                
-                # Report batch completion status
-                if failed_tasks:
-                    LOGGER.error(f"Batch {batch_num} completed with {len(failed_tasks)} failures: {failed_tasks}")
-                    # Re-raise the first exception to maintain original behavior
-                    raise RuntimeError(f"Processing failed for tasks: {failed_tasks}")
-                else:
-                    LOGGER.info(f"Batch {batch_num} completed successfully ({completed_count}/{len(batch)} tasks processed)")
+                        self._process_single_task(rid, bid, fid)
+                        LOGGER.info(f"Worker {worker_id}: Successfully processed repeat {rid}, bug ID {bid}")
+                    except Exception as e:
+                        LOGGER.error(f"Worker {worker_id}: Failed to process repeat {rid}, bug ID {bid}: {e}")
+                    finally:
+                        task_queue.task_done()
+                        
+                except queue.Empty:
+                    break
+        
+        # Create queue and add all tasks
+        task_queue = queue.Queue()
+        for task in all_tasks:
+            task_queue.put(task)
+            LOGGER.debug(f"Added task: repeat {task[0]}, bug ID {task[1]}")
+        
+        # Start worker threads
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.PARALLEL) as executor:
+            futures = [
+                executor.submit(worker, task_queue, worker_id) for worker_id in range(self.PARALLEL)
+            ]
+            
+            # Wait for all tasks to be completed
+            task_queue.join()
+            
+            # Signal all workers to shut down by adding sentinel values
+            for _ in range(self.PARALLEL):
+                task_queue.put(None)
+            
+            # Wait for all workers to finish
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    LOGGER.error(f"Worker failed: {e}")
         
         LOGGER.info(f"All {total_tasks} tasks completed successfully!")
 
@@ -255,14 +264,14 @@ class ConstructorEngine:
                 assign_groundtruth(thread_db, self.PID, bid, lineIdx2lineData)
 
             # Measure sbfl and mbfl scores using thread-local connection
-            measure_scores(self.EXP_CONFIG, thread_db, fid, lineIdx2lineData)
+            measure_scores(self.EXP_CONFIG, thread_db, fid, lineIdx2lineData, rid=rid)
 
             # Save the results to file as pickled JSON
             with open(output_file, "wb") as f:
                 pickle.dump(lineIdx2lineData, f)
             
             total_time = time.time() - start_time
-            LOGGER.debug(f"Saved results for repeat {rid}, bug ID {bid} to {output_file} (total time: {total_time:.2f}s)")
+            LOGGER.info(f"Saved results for repeat {rid}, bug ID {bid} to {output_file} (total time: {total_time:.2f}s)")
             
         finally:
             # Ensure database connection is properly closed
