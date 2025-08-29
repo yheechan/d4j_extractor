@@ -20,7 +20,7 @@ subjectInfo_dir="$result_dir/subjectInfo"
 dir_bin_classes=$(cat "$subjectInfo_dir/dir_bin_classes.txt")
 dir_bin_tests=$(cat "$subjectInfo_dir/dir_bin_tests.txt")
 cp_test=$(cat "$subjectInfo_dir/cp_test.txt")
-
+# cp_test="$JUNIT4_JAR:$cp_test"
 
 repo_dir="$pid_dir/${PID}-${BID}b"
 cd $repo_dir

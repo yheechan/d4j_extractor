@@ -97,7 +97,8 @@ def get_test_info(file_path):
                     continue
                     
                 # Check if this looks like a proper CSV start (has test name pattern)
-                if ('#test' in line or 'Test#' in line or '.Test' in line or 'TestCase#' in line) and line.count(',') >= 3:
+                # Look for package.Class#method pattern and ensure it has enough commas for CSV structure
+                if '#' in line and line.count(',') >= 3 and ('test' in line.lower() or 'Test' in line or line.count('.') >= 2):
                     # This is likely a new test row, save previous if exists
                     if current_line:
                         merged_lines.append(current_line)
@@ -113,6 +114,7 @@ def get_test_info(file_path):
 
             newTcIdx = -1
             for line_num, line in enumerate(merged_lines, 1):
+                # LOGGER.debug(f"Test Info {line_num}: {line}")
                 line = line.strip()
                 if not line:  # Skip empty lines
                     continue

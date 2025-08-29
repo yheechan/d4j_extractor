@@ -188,6 +188,18 @@ def combine_transitions(result_transition, exception_type_transition,
                   int(stacktrace_transition, 2))
     return format(int_result, f'0{len(result_transition)}b')
 
+def check4methodMatch(line_method, mutation_methods):
+    """
+    Check if the line method matches any of the mutation methods.
+    :param line_method: The method name of the line.
+    :param mutation_methods: A list of mutation method names.
+    :return: True if there is a match, False otherwise.
+    """
+    for mutation_method in mutation_methods:
+        if mutation_method in line_method:
+            return mutation_method
+    return False
+
 def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
     """
     Get mutation information for a specific fault index.
@@ -247,9 +259,10 @@ def get_lineIdx2mutation(DB, FID, lineIdx2lineData):
 
         line_start_time = time.time()
         if line_class in mutation_dict:
-            if line_method in mutation_dict[line_class]:
-                if line_num in mutation_dict[line_class][line_method]:
-                    lineIdx2mutation[lineIdx].extend(mutation_dict[line_class][line_method][line_num])
+            method_key = check4methodMatch(line_method, mutation_dict[line_class].keys())
+            if method_key:
+                if line_num in mutation_dict[line_class][method_key]:
+                    lineIdx2mutation[lineIdx].extend(mutation_dict[line_class][method_key][line_num])
         line_time = time.time() - line_start_time
         LOGGER.debug(f"[{FID}b] get_lineIdx2mutation took {line_time:.2f} seconds. with mutation cnt {len(mutation_info)}")
 

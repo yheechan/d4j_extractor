@@ -326,7 +326,7 @@ class SaverEngine:
                     exceptionMsgBit = self.returnTransitionBit(baselineTcInfo["exception_msg"], mutantTcInfo["exception_msg"])
                     stacktraceBit = self.returnTransitionBit(baselineTcInfo["stacktrace"], mutantTcInfo["stacktrace"])
                     
-                    transition_type, cov_sim = self.returnCovSim(baselineTcInfo, mutantTcInfo, num_lines)
+                    transition_type, cov_sim = self.returnCovSim(baselineTcInfo, mutantTcInfo, num_lines, len(mutantResults["lineIdx2lineInfo"]))
                     transition_results[f"{transition_type}_cov_sim"].append(cov_sim)
                 else:
                     resultBit = "0"
@@ -355,15 +355,18 @@ class SaverEngine:
         elif baselineResult == mutantResult:
             return "0"
 
-    def returnCovSim(self, baselineTcInfo, mutantTcInfo, num_lines):
+    def returnCovSim(self, baselineTcInfo, mutantTcInfo, baseline_num_lines, mutant_num_lines):
         baselineResult = baselineTcInfo["result"]
         mutantResult = mutantTcInfo["result"]
 
         baselineCovBitVal = baselineTcInfo["covBitVal"]
         mutantCovBitVal = mutantTcInfo["covBitVal"]
         
-        baselineCovBitStr = format(baselineCovBitVal, f'0{num_lines}b')
-        mutantCovBitStr = format(mutantCovBitVal, f'0{num_lines}b')
+        # Use the maximum number of lines to ensure both strings have the same length
+        max_num_lines = max(baseline_num_lines, mutant_num_lines)
+        
+        baselineCovBitStr = format(baselineCovBitVal, f'0{max_num_lines}b')
+        mutantCovBitStr = format(mutantCovBitVal, f'0{max_num_lines}b')
 
         cosine_sim = cosine_similarity(baselineCovBitStr, mutantCovBitStr)
         if baselineResult == 1 and mutantResult == 0:

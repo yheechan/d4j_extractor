@@ -24,7 +24,7 @@ cp_test=$(cat "$subjectInfo_dir/cp_test.txt")
 
 # replace text of dir_bin_classes (e.g., target/classes) in cp_test with "core${CORE}/working_classes"
 cp_test=$(echo "$cp_test" | sed "s|$dir_bin_classes|core${CORE}/working_classes|g")
-echo $cp_test
+# cp_test="$JUNIT4_JAR:$cp_test"
 
 repo_dir="$pid_dir/${PID}-${BID}b"
 core_dir="$repo_dir/core${CORE}"

@@ -1,23 +1,27 @@
 cd ../
 
 
+# echo "Running Lang with coverage..."
+# mkdir -p ./log/Lang
+# time python3 main.py -pid Lang -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Lang/Lang_withCoverage_1.log 2>&1
+
+echo "Running Mockito with coverage..."
+mkdir -p ./log/Mockito
+time python3 main.py -pid Mockito -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Mockito/Mockito_withCoverage_1.log 2>&1
+
+# echo "Running Math with coverage..."
 # mkdir -p ./log/Math
-# time python3 main.py -pid Lang -e -p 10 -el attempt_1 -d > ./log/Lang/Lang_attempt_1.log 2>&1
+# time python3 main.py -pid Math -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Math/Math_withCoverage_1.log 2>&1
 
-
-# mkdir -p ./log/Mockito
-# time python3 main.py -pid Mockito -e -p 10 -el attempt_1 -d > ./log/Mockito/Mockito_attempt_1.log 2>&1
-
-
-# mkdir -p ./log/Math
-# time python3 main.py -pid Math -e -p 2 -el attempt_1 -d > ./log/Math/Math_attempt_1.log 2>&1
-
+# echo "Running Time with coverage..."
 # mkdir -p ./log/Time
-# time python3 main.py -pid Time -e -p 2 -el attempt_1 -d > ./log/Time/Time_attempt_1.log 2>&1
+# time python3 main.py -pid Time -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Time/Time_withCoverage_1.log 2>&1
 
+# echo "Running Chart with coverage..."
 # mkdir -p ./log/Chart
-# time python3 main.py -pid Chart -e -p 2 -el attempt_1 -d > ./log/Chart/Chart_attempt_1.log 2>&1
+# time python3 main.py -pid Chart -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Chart/Chart_withCoverage_1.log 2>&1
 
-mkdir -p ./log/Closure
-time python3 main.py -pid Closure -e -p 16 -el attempt_1 -d > ./log/Closure/Closure_attempt_1.log 2>&1
+# echo "Running Closure with coverage..."
+# mkdir -p ./log/Closure
+# time python3 main.py -pid Closure -el withCoverage_1 --parallel 8 --extractor --with-mutation-coverage -d > ./log/Closure/Closure_withCoverage_1.log 2>&1
 

@@ -8,9 +8,29 @@ cd /ssd_home/yangheechan/CodeHealer2.0/fault_localization/ranking_task/run_model
 time python3 run_all_methods.py \
     attempt_1 \
     1 \
-    Lang Mockito Math
+    Lang Mockito Math Time Chart
 
 time python3 run_all_methods.py \
     attempt_1 \
     2 \
-    Lang Mockito Math
+    Lang Mockito Math Time Chart
+
+time python3 run_all_methods.py \
+    attempt_1 \
+    3 \
+    Lang Mockito Math Time Chart
+
+time python3 run_all_methods.py \
+    attempt_1 \
+    4 \
+    Lang Mockito Math Time Chart
+
+time python3 run_all_methods.py \
+    attempt_1 \
+    5 \
+    Lang Mockito Math Time Chart
+
+time python3 run_all_methods.py \
+    attempt_1 \
+    6 \
+    Lang Mockito Math Time Chart
